@@ -129,7 +129,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       # Build only; do not push. A broken Dockerfile should fail the PR, but
       # publishing images is a separate, deliberate step.
