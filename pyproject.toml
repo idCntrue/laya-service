@@ -23,7 +23,12 @@ keywords = [
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache Software License",
+    # NOTE: no "License ::" classifier here, deliberately. PEP 639 replaced
+    # license classifiers with the `license` expression above, and setuptools
+    # now *errors* if both are present:
+    #   InvalidConfigError: License classifiers have been superseded by
+    #   license expressions
+    # Adding one back will break `pip install`.
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",

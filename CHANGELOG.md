@@ -16,11 +16,23 @@ Note that this project is pre-1.0: the API may change in a minor release, and
 - `scripts/install_systemd.sh` — renders the systemd template for the local
   machine, resolving the path-escaping and hardening toggles that systemd
   cannot handle itself.
-- Documentation consistency tests that fail the build when the docs drift from
-  the code.
+- Documentation and packaging consistency tests that fail the build when the
+  docs or `pyproject.toml` drift from the code.
 
 ### Fixed
 
+- **`pip install` failed with `InvalidConfigError`.** Switching to a PEP 639
+  license expression (`license = "Apache-2.0"`) while leaving the matching
+  `License :: OSI Approved :: Apache Software License` classifier in place makes
+  setuptools refuse to build:
+
+      InvalidConfigError: License classifiers have been superseded by
+      license expressions
+
+  This broke every CI job and would have broken every user's install. It went
+  unnoticed locally because the package was already installed editable, so
+  nothing re-ran the build. Covered now by `tests/unit/test_packaging.py`, which
+  parses `pyproject.toml` directly and needs no build or network.
 - **systemd template used shell syntax systemd does not support.**
   `NoNewPrivileges=${VAR:-true}` was rejected with `Failed to parse boolean
   value`, silently falling back to the directive default on every start. The
@@ -93,7 +105,7 @@ First working version.
 - **Quality gates**
   - `ruff` (E, F, I, N, UP, B, SIM, RUF) and `ruff format`.
   - `mypy --strict` across source and tests.
-  - 308 tests, 92% coverage, with a 70% floor enforced by `fail_under`.
+  - 321 tests, 92% coverage, with a 70% floor enforced by `fail_under`.
 - **Docs**
   - `README.md` — architecture, deployment, operations, limitations.
   - `API.md` — interface reference (Chinese).
