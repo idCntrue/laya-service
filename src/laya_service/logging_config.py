@@ -18,7 +18,7 @@ import logging
 import re
 import sys
 from collections.abc import Mapping, MutableMapping
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 
 __all__ = [
     "JsonFormatter",
@@ -170,10 +170,23 @@ _LOGGING_KWARGS: Final[frozenset[str]] = frozenset(
 )
 
 
-class StructuredLogger(logging.LoggerAdapter):  # type: ignore[type-arg]
-    # ``LoggerAdapter`` is generic only in its stubs; at runtime on 3.10 the
-    # class is not subscriptable, so the type argument cannot be written inline
-    # and the parameter is left to mypy via the ignore above.
+if TYPE_CHECKING:
+    # ``LoggerAdapter`` is generic in its stubs but NOT subscriptable at runtime
+    # on Python 3.10 -- `class X(logging.LoggerAdapter[logging.Logger])` raises
+    # TypeError: 'type' object is not subscriptable. Writing the parameter
+    # inline would break the import; omitting it entirely makes `mypy --strict`
+    # complain about a missing type argument, and a bare `# type: ignore` for
+    # that is itself reported as unused under some Python targets.
+    #
+    # Declaring a subscripted alias under TYPE_CHECKING gives mypy the generic
+    # form to check against while the runtime sees the plain, subscriptable
+    # class. This keeps one definition working under 3.10, 3.11 and 3.12.
+    _LoggerAdapter = logging.LoggerAdapter[logging.Logger]
+else:  # pragma: no cover - runtime only
+    _LoggerAdapter = logging.LoggerAdapter
+
+
+class StructuredLogger(_LoggerAdapter):
     """A :class:`logging.LoggerAdapter` that accepts arbitrary context fields.
 
     The stdlib's ``Logger`` only tolerates ``exc_info``, ``stack_info``,

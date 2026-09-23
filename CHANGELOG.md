@@ -43,6 +43,13 @@ Note that this project is pre-1.0: the API may change in a minor release, and
   pytest and mypy happen to pull it in, so it worked locally and failed in CI
   once the import was reached. Now declared explicitly with a version marker
   rather than relied on transitively.
+- **`StructuredLogger` was not subscriptable at runtime on 3.10.** An earlier
+  attempt to satisfy `mypy --strict` by writing
+  `class StructuredLogger(logging.LoggerAdapter[logging.Logger])` made the
+  module fail to import on 3.10 with `TypeError: 'type' object is not
+  subscriptable`, because the runtime class is not generic there — only the
+  stub is. The generic form is now declared under `TYPE_CHECKING` and bound to
+  the plain class at runtime, which is correct under 3.10, 3.11 and 3.12.
 - **The CI docs job could not construct the app.** With no `.env` present,
   `create_app()` fell back to the defaults — `HOST=0.0.0.0` with an empty
   `LAYA_API_KEY` — and the startup guard correctly refused. The guard is the
