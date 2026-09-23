@@ -16,7 +16,7 @@
 # ---------------------------------------------------------------------------
 # Stage 1: builder
 # ---------------------------------------------------------------------------
-FROM python:3.10-slim-bookworm AS builder
+FROM python:3.14-slim-bookworm AS builder
 
 # Pin the CPU wheel index. Override for a CUDA build.
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
@@ -69,7 +69,7 @@ RUN pip install --index-url "${PIP_INDEX_URL}" --upgrade pip setuptools wheel \
 # ---------------------------------------------------------------------------
 # Stage 2: runtime
 # ---------------------------------------------------------------------------
-FROM python:3.10-slim-bookworm AS runtime
+FROM python:3.14-slim-bookworm AS runtime
 
 LABEL org.opencontainers.image.title="laya-service" \
       org.opencontainers.image.description="Decision-model inference over HTTP" \
