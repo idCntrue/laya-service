@@ -134,7 +134,7 @@ jobs:
       # Build only; do not push. A broken Dockerfile should fail the PR, but
       # publishing images is a separate, deliberate step.
       - name: Build image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: deploy/docker/Dockerfile
