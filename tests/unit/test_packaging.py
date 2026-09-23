@@ -16,22 +16,48 @@ network, and they fail in the same run as everything else.
 
 from __future__ import annotations
 
+import importlib
 import re
-import sys
 from pathlib import Path
 from typing import Any, Final
 
 import pytest
 
+# TOML parsing without a hard dependency on either module.
+#
 # ``tomllib`` is stdlib from 3.11; on 3.10 the backport ``tomli`` provides the
-# same API. The version check is used rather than try/except because mypy
-# evaluates a try/except against the *target* Python version: under 3.12 it
-# knows ``tomllib`` exists, treats the except branch as dead, and reports the
-# redefinition. A version check is understood on both sides.
-if sys.version_info >= (3, 11):
-    import tomllib
-else:  # pragma: no cover - exercised only on 3.10
-    import tomli as tomllib
+# same API. Neither import is written directly, because mypy's view of which one
+# exists depends on the *configured* Python version, not the running one:
+#
+#   * A plain `try/except ModuleNotFoundError` is rejected under 3.12, where
+#     mypy knows tomllib exists and calls the except branch a redefinition.
+#   * A `sys.version_info` check is rejected when mypy is configured for 3.10
+#     while running on 3.12 -- it takes the else branch, needs `tomli`, and
+#     `tomli` is not installed there (its marker is python_version < '3.11').
+#
+# Importing through importlib sidesteps both: there is no import statement for
+# mypy to reason about, and the fallback is resolved at run time where the
+# answer is unambiguous.
+
+
+def _load_toml_module() -> Any:
+    """Return a TOML parser module, preferring the stdlib.
+
+    Returns:
+        ``tomllib`` on 3.11+, otherwise the ``tomli`` backport.
+
+    Raises:
+        RuntimeError: If neither is importable.
+    """
+    for name in ("tomllib", "tomli"):
+        try:
+            return importlib.import_module(name)
+        except ModuleNotFoundError:
+            continue
+    raise RuntimeError("no TOML parser available; install tomli on Python 3.10")
+
+
+tomllib = _load_toml_module()
 
 ROOT: Final[Path] = Path(__file__).resolve().parents[2]
 PYPROJECT: Final[Path] = ROOT / "pyproject.toml"

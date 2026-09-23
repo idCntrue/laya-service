@@ -60,10 +60,15 @@ dev = [
     "pre-commit>=3.7",
     "types-requests",
     # tests/unit/test_packaging.py parses pyproject.toml. `tomllib` is stdlib
-    # from 3.11; on 3.10 the backport is needed. pytest and mypy happen to pull
-    # it in already, but relying on a transitive dependency means the test
-    # breaks the day one of them drops it -- declare it explicitly.
-    "tomli>=2.0; python_version < '3.11'",
+    # from 3.11 and `tomli` is the backport for 3.10.
+    #
+    # Declared without a version marker on purpose. mypy resolves imports
+    # according to the Python version it is configured to analyse, which can
+    # differ from the interpreter it runs under -- so a 3.12 environment may
+    # still need `tomli` present to type-check a 3.10-targeted file. Making it
+    # unconditional costs a small pure-Python package and removes the mismatch
+    # entirely.
+    "tomli>=2.0",
 ]
 
 [project.urls]
@@ -115,7 +120,15 @@ known-first-party = ["laya_service"]
 # mypy
 # ---------------------------------------------------------------------------
 [tool.mypy]
-python_version = "3.10"
+# python_version is deliberately NOT pinned. Pinning it to 3.10 while mypy runs
+# under 3.12 makes mypy analyse the code as 3.10 -- so it resolves the `tomli`
+# fallback in tests/unit/test_packaging.py -- but `tomli` is not installed
+# there, because its marker is `python_version < '3.11'`. mypy then fails with
+# "No module named 'tomli'" on 3.12 only. Letting mypy follow the interpreter it
+# runs under keeps the analysis and the installed packages consistent.
+#
+# requires-python below still declares the floor; this is about which
+# interpreter's semantics to analyse, not which versions are supported.
 strict = true
 ignore_missing_imports = true
 warn_unreachable = true

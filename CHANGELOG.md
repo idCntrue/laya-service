@@ -50,6 +50,15 @@ Note that this project is pre-1.0: the API may change in a minor release, and
   subscriptable`, because the runtime class is not generic there — only the
   stub is. The generic form is now declared under `TYPE_CHECKING` and bound to
   the plain class at runtime, which is correct under 3.10, 3.11 and 3.12.
+- **`mypy` failed on Python 3.12 only, with `No module named 'tomli'`.**
+  `[tool.mypy] python_version` was pinned to `"3.10"`, so on a 3.12 runner mypy
+  analysed the code as 3.10 — resolving the `tomli` fallback in
+  `tests/unit/test_packaging.py` — while `tomli` itself was not installed,
+  because its marker was `python_version < '3.11'`. Two changes: the pin is
+  removed so mypy follows the interpreter it runs under, and `tomli` is declared
+  unconditionally so the analysis and the installed set can never disagree.
+  Reproduced by hiding `tomli` and confirmed fixed across
+  `mypy --python-version` 3.10, 3.11 and 3.12.
 - **The documentation tests failed on a clean checkout.** They called
   `create_app()` with no arguments, so on a machine without a `.env` the
   settings fell back to `HOST=0.0.0.0` with an empty `LAYA_API_KEY` and the
