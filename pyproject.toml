@@ -59,6 +59,11 @@ dev = [
     "mypy>=1.10",
     "pre-commit>=3.7",
     "types-requests",
+    # tests/unit/test_packaging.py parses pyproject.toml. `tomllib` is stdlib
+    # from 3.11; on 3.10 the backport is needed. pytest and mypy happen to pull
+    # it in already, but relying on a transitive dependency means the test
+    # breaks the day one of them drops it -- declare it explicitly.
+    "tomli>=2.0; python_version < '3.11'",
 ]
 
 [project.urls]

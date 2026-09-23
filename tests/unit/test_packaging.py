@@ -17,14 +17,20 @@ network, and they fail in the same run as everything else.
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 from typing import Any, Final
 
 import pytest
 
-try:  # Python 3.11+
+# ``tomllib`` is stdlib from 3.11; on 3.10 the backport ``tomli`` provides the
+# same API. The version check is used rather than try/except because mypy
+# evaluates a try/except against the *target* Python version: under 3.12 it
+# knows ``tomllib`` exists, treats the except branch as dead, and reports the
+# redefinition. A version check is understood on both sides.
+if sys.version_info >= (3, 11):
     import tomllib
-except ModuleNotFoundError:  # pragma: no cover - 3.10 has no tomllib
+else:  # pragma: no cover - exercised only on 3.10
     import tomli as tomllib
 
 ROOT: Final[Path] = Path(__file__).resolve().parents[2]

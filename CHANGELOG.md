@@ -33,6 +33,20 @@ Note that this project is pre-1.0: the API may change in a minor release, and
   unnoticed locally because the package was already installed editable, so
   nothing re-ran the build. Covered now by `tests/unit/test_packaging.py`, which
   parses `pyproject.toml` directly and needs no build or network.
+- **`mypy --strict` failed on Python 3.12 only.** The `tomllib` import used
+  `try/except ModuleNotFoundError` with a fallback to `tomli`. mypy evaluates
+  that against the *target* version: on 3.12 it knows `tomllib` exists, treats
+  the except branch as dead, and reports `Name "tomllib" already defined`. A
+  `sys.version_info` check is understood on both sides. Verified with
+  `mypy --python-version 3.10/3.11/3.12`.
+- **`tomli` was an undeclared dependency.** On 3.10 the packaging test needs it;
+  pytest and mypy happen to pull it in, so it worked locally and failed in CI
+  once the import was reached. Now declared explicitly with a version marker
+  rather than relied on transitively.
+- **The CI docs job could not construct the app.** With no `.env` present,
+  `create_app()` fell back to the defaults — `HOST=0.0.0.0` with an empty
+  `LAYA_API_KEY` — and the startup guard correctly refused. The guard is the
+  feature; the job now passes explicit settings.
 - **systemd template used shell syntax systemd does not support.**
   `NoNewPrivileges=${VAR:-true}` was rejected with `Failed to parse boolean
   value`, silently falling back to the directive default on every start. The

@@ -103,14 +103,21 @@ jobs:
       # the test suite would also catch, but only if a test imports it.
       - name: Build OpenAPI schema
         run: |
+          # Settings are passed explicitly. CI has no .env, so create_app()
+          # would fall back to the defaults (HOST=0.0.0.0 with an empty
+          # LAYA_API_KEY) and the startup guard would correctly refuse to
+          # build an unauthenticated public service. The guard is the feature;
+          # supplying settings is how a caller works with it.
           python -c "
+          from laya_service.infrastructure.config.settings import Settings
           from laya_service.interfaces.http.app import create_app
-          app = create_app()
-          spec = app.openapi()
-          paths = sorted(spec['paths'])
+
+          app = create_app(settings=Settings(host='127.0.0.1', laya_api_key='ci'))
+          paths = sorted(app.openapi()['paths'])
           print('OpenAPI paths:')
-          for p in paths:
-              print(' ', p)
+          for path in paths:
+              print(' ', path)
+
           expected = {
               '/healthz', '/readyz', '/v1/predict',
               '/v1/robot-dog/localization-reliability',

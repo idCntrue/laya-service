@@ -285,6 +285,18 @@ exits non-zero below the threshold.
 The test suite is fast because `FakeDecisionModel` satisfies the `DecisionModel`
 port. No weights, no network, no GPU.
 
+> **Changing `pyproject.toml`? Re-run the install.** `make test` does not verify
+> that the project can be installed — it imports from the editable checkout that
+> was already built. A metadata error is invisible until something rebuilds:
+>
+> ```bash
+> .venv/bin/pip install -e ".[dev]"
+> ```
+>
+> This is not hypothetical: a PEP 639 license expression combined with a
+> leftover `License ::` classifier passed all 308 tests locally while breaking
+> every CI job. See [CONTRIBUTING.md](CONTRIBUTING.md#quality-gates).
+
 ---
 
 ## API reference

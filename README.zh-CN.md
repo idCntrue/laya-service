@@ -273,6 +273,18 @@ make smoke         # 对运行中的服务跑三条 curl
 测试套件跑得很快，因为 `FakeDecisionModel` 实现了 `DecisionModel` 端口。无需
 权重、无需网络、无需 GPU。
 
+> **改了 `pyproject.toml`？请重跑一次安装。** `make test` **不验证项目能否被
+> 安装** —— 它从已经构建好的 editable 检出里导入。元数据错误在重新构建之前
+> 完全不可见：
+>
+> ```bash
+> .venv/bin/pip install -e ".[dev]"
+> ```
+>
+> 这不是假设：PEP 639 的 license 表达式配上残留的 `License ::` classifier，
+> 本地 308 个测试全绿，而每个 CI job 全挂。详见
+> [CONTRIBUTING.md](CONTRIBUTING.md#quality-gates)。
+
 ---
 
 ## API 参考

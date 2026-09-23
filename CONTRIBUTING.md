@@ -62,6 +62,28 @@ make test-cov      # pytest --cov, fails under 70%
   significantly needs a reason.
 - **Every public function and class needs a Google-style docstring.**
 
+### If you change `pyproject.toml`, re-run the install
+
+`make test` does **not** verify that the project can be installed. The suite
+imports `laya_service` from the editable checkout that `make install-dev`
+already created, so a metadata error is invisible until something rebuilds:
+
+```bash
+.venv/bin/pip install -e ".[dev]"    # after touching pyproject.toml
+```
+
+This is not hypothetical. Switching to a PEP 639 license expression while
+leaving the matching `License ::` classifier in place made setuptools raise
+`InvalidConfigError` on every build. All 308 tests passed locally; every CI job
+failed. The package had been installed once and never rebuilt.
+
+`tests/unit/test_packaging.py` now covers the invariants that only surface at
+build time (license style consistency, declared files existing, the version
+agreeing with `__init__`, the tool config CI depends on), so the common cases
+fail in `make test`. It parses `pyproject.toml` directly and needs no build and
+no network — but it cannot catch everything a real build would, so re-running
+the install is still the reliable check.
+
 ## Architectural rules
 
 These are enforced by tests, not by convention — `tests/unit/test_architecture.py`
