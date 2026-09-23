@@ -1,0 +1,77 @@
+name: Feature request
+description: Suggest a capability or improvement
+title: "[Feature] "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, it is worth knowing what this project is good at. The
+        model reads text; it does not compute. Measured on this service:
+
+        | Task type | Result |
+        |---|---|
+        | Semantic classification (sentiment, spam, intent, safety) | 8/8 |
+        | Reasoning (arithmetic, temporal, multi-step) | 3/6 |
+
+        If your idea needs arithmetic, spatial reasoning, planning, or search, a
+        deterministic algorithm will beat the model on both accuracy and cost —
+        see the README's limitations section. Feature requests in that direction
+        are still welcome, but say why the model is the right tool.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before you file
+      options:
+        - label: I searched existing issues for this request
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: |
+        What are you trying to do that you cannot do today? Describe the
+        situation, not the solution — the best fix is sometimes different from
+        the one first imagined.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: Your suggested approach, if you have one.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: |
+        Including "use a deterministic algorithm" or "fine-tune a small model".
+        If one of those would work, that is worth saying — this project is
+        explicitly not the right answer to every problem.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - HTTP API (new endpoint or field)
+        - Model / inference behaviour
+        - Configuration
+        - Deployment (Docker, systemd, scripts)
+        - Observability (logging, metrics)
+        - Documentation
+        - Developer experience / tooling
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Would you be willing to work on this?
+      options:
+        - label: I would be willing to open a PR for this

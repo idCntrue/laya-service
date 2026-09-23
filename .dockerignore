@@ -1,0 +1,45 @@
+# Keep the build context small: the Dockerfile copies only what it needs, and
+# a large context makes every build slow even when layers are cached.
+
+.git
+.gitignore
+.github
+.venv
+venv
+ENV
+
+__pycache__
+*.py[cod]
+*.egg-info
+build
+dist
+
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+coverage.xml
+
+.env
+.env.*
+!.env.example
+
+.run
+logs
+*.log
+*.pid
+
+tests
+docs
+models
+*.safetensors
+*.bin
+*.pt
+*.pth
+
+# README.md is deliberately NOT ignored: pyproject.toml declares it as the
+# project's readme, so `pip install .` fails in the builder without it.
+Makefile
+.pre-commit-config.yaml
+.editorconfig

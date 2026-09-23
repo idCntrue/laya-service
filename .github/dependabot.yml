@@ -1,0 +1,78 @@
+version: 2
+
+updates:
+  # Python dependencies. Grouped so a routine bump is one PR rather than ten.
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 5
+    groups:
+      # Patch and minor bumps of dev tooling can land together.
+      dev-tooling:
+        patterns:
+          - "pytest*"
+          - "ruff"
+          - "mypy"
+          - "pre-commit"
+          - "httpx"
+        update-types:
+          - "minor"
+          - "patch"
+      # Runtime deps are reviewed individually: a torch or transformers bump
+      # can change inference behaviour, so it should not be buried in a batch.
+      runtime:
+        patterns:
+          - "fastapi"
+          - "uvicorn*"
+          - "pydantic*"
+          - "python-dotenv"
+          - "huggingface_hub"
+        update-types:
+          - "patch"
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope
+    ignore:
+      # torch is pinned to the CPU-only build (2.9.1+cpu) on purpose. A bump
+      # must be done deliberately, with the wheel URL in the Makefile and the
+      # Dockerfile updated together -- an automated PR would break both.
+      - dependency-name: "torch"
+      # `laya` has no stable API surface; a bump needs the adapter re-verified
+      # against the real interface (see CONTRIBUTING.md > Working with Laya).
+      - dependency-name: "laya"
+
+  # Keep the actions used in .github/workflows current.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: "chore(ci)"
+
+  # Base images in the Dockerfile.
+  - package-ecosystem: docker
+    directory: "/deploy/docker"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - docker
+    commit-message:
+      prefix: "chore(docker)"

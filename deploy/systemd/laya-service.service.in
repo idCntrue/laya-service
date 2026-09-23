@@ -1,0 +1,113 @@
+# Laya Service -- user-level systemd unit TEMPLATE.
+#
+# Do not install this file directly: it contains @PLACEHOLDER@ tokens that must
+# be filled in for your machine. Run the generator instead:
+#
+#     ./scripts/install_systemd.sh
+#
+# which substitutes the placeholders and writes the finished unit to
+# ~/.config/systemd/user/laya-service.service.
+#
+# ---------------------------------------------------------------------------
+# WHY A TEMPLATE
+#
+# systemd needs absolute paths, and a path containing a space needs different
+# treatment per directive. These rules were verified empirically against
+# systemd on Ubuntu 22.04, not assumed:
+#
+#   * ExecStart       -- quoting IS honoured. Quote the path.
+#   * WorkingDirectory / EnvironmentFile
+#                     -- quoting is NOT honoured; the whole remainder of the
+#                        line is the value, so a space works unquoted. Adding
+#                        quotes here would embed them in the path literally.
+#   * ReadWritePaths  -- quoting IS honoured, and is the correct form for a
+#                        space. Two forms that look plausible but FAIL:
+#                          - a bare space  -> splits into two invalid paths,
+#                            both silently dropped with a warning
+#                          - \x20 or \040 -> systemd strips the backslash and
+#                            keeps the literal characters, yielding "x20"/"040"
+#                            in the path, which then does not match anything
+#                        Use double quotes.
+#
+# The generator below applies all three so you do not have to.
+# ---------------------------------------------------------------------------
+
+[Unit]
+Description=Laya decision-model HTTP service
+Documentation=https://github.com/idCntrue/laya-service/blob/main/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+WorkingDirectory=@PROJECT_DIR@
+EnvironmentFile=@PROJECT_DIR@/.env
+
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+ExecStart="@PROJECT_DIR@/.venv/bin/python" -m laya_service.main
+
+# Restart on crash but not on a clean stop, and back off so a configuration
+# error does not become a hot restart loop.
+Restart=on-failure
+RestartSec=5s
+
+# SIGTERM lets Uvicorn drain in-flight inference (the app allows 30s), then
+# SIGKILL. TimeoutStopSec must exceed the app's graceful window.
+KillSignal=SIGTERM
+KillMode=mixed
+TimeoutStopSec=40
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=laya-service
+
+# --- Hardening --------------------------------------------------------------
+# Three of these directives need capabilities that a *user* systemd manager
+# inside a container often cannot obtain, and each fails INDEPENDENTLY with
+# "status=218/CAPABILITIES", leaving the unit unable to spawn:
+#
+#     NoNewPrivileges=true        needs CAP_SETPCAP
+#     PrivateDevices=true         needs CAP_SYS_ADMIN
+#     ProtectKernelModules=true   needs CAP_SYS_ADMIN
+#
+# They are parameterised so a restricted host can turn them off from .env
+# without editing this file. All three default to ON, which is correct on a
+# normal host -- only disable them if the unit actually refuses to start.
+#
+# The values are substituted at INSTALL time by scripts/install_systemd.sh,
+# not by systemd. systemd does not support shell default-value syntax:
+# `${VAR:-true}` and `$VAR` are both rejected with
+#     Failed to parse boolean value, ignoring: ${VAR:-true}
+# and the directive silently degrades to its default. Substituting here is the
+# only form that actually works.
+#
+# Check what really applied (do not assume):
+#     systemctl --user show laya-service \
+#       -p NoNewPrivileges -p PrivateDevices -p ProtectKernelModules
+NoNewPrivileges=@NO_NEW_PRIVILEGES@
+PrivateTmp=true
+PrivateDevices=@PRIVATE_DEVICES@
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=@PROTECT_KERNEL_MODULES@
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+# torch's JIT and some BLAS backends require executable writable memory, so this
+# one is deliberately left off.
+MemoryDenyWriteExecute=false
+
+# ProtectHome=read-only above blocks writes under /home, so the paths the
+# service genuinely needs to write are re-opened explicitly. Double-quoted, per
+# the escaping note at the top of this file.
+ReadWritePaths="@PROJECT_DIR@/logs"
+ReadWritePaths="@PROJECT_DIR@/.run"
+ReadWritePaths="@HF_CACHE@"
+
+[Install]
+WantedBy=default.target

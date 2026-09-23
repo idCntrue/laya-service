@@ -1,0 +1,9 @@
+# Production dependencies.
+-r base.txt
+
+# Optional: process manager for multi-worker deployments. Not used by the
+# default single-process `make start`, which runs Uvicorn directly.
+#
+# Note that Laya holds a multi-gigabyte model in memory. Measure your RSS before
+# raising --workers; on a 14 GB host, more than one worker is likely to OOM.
+gunicorn>=21.2

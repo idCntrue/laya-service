@@ -1,0 +1,145 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "laya-service"
+version = "0.1.0"
+description = "Production HTTP service for the Laya decision engine, built as a Clean Architecture / Hexagonal application."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "The laya-service Authors" }]
+keywords = [
+    "laya",
+    "decision-engine",
+    "inference",
+    "fastapi",
+    "clean-architecture",
+    "hexagonal",
+    "zero-shot",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "python-dotenv>=1.0",
+    "huggingface_hub>=0.22",
+    "laya>=0.3.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "httpx>=0.27",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "pre-commit>=3.7",
+    "types-requests",
+]
+
+[project.urls]
+Homepage = "https://github.com/idCntrue/laya-service"
+Repository = "https://github.com/idCntrue/laya-service"
+Issues = "https://github.com/idCntrue/laya-service/issues"
+Changelog = "https://github.com/idCntrue/laya-service/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/idCntrue/laya-service/blob/main/API.md"
+
+[project.scripts]
+laya-service = "laya_service.main:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# ---------------------------------------------------------------------------
+# Ruff
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+extend-exclude = [".venv", "build", "dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
+ignore = [
+    # Google-style docstrings legitimately start with a one-line summary that
+    # ruff's pydocstyle rules would flag; we do not enable D rules anyway.
+    "RUF001", # ambiguous unicode character in string (em-dashes in prose)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+# FastAPI's dependency injection *requires* Depends(...) as an argument default;
+# B008's advice to hoist the call into the function body is incompatible with
+# how the framework introspects signatures. Scoped to the route modules and the
+# composition root, which is where the dependency graph is declared.
+"src/laya_service/interfaces/http/routes/*.py" = ["B008"]
+"src/laya_service/interfaces/http/dependencies.py" = ["B008"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["laya_service"]
+
+# ---------------------------------------------------------------------------
+# mypy
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.10"
+strict = true
+ignore_missing_imports = true
+warn_unreachable = true
+show_error_codes = true
+files = ["src", "tests"]
+
+[[tool.mypy.overrides]]
+module = ["laya.*", "torch.*", "transformers.*"]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+# ---------------------------------------------------------------------------
+# coverage
+# ---------------------------------------------------------------------------
+[tool.coverage.run]
+source = ["laya_service"]
+branch = true
+omit = ["*/__init__.py"]
+
+[tool.coverage.report]
+fail_under = 70
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]

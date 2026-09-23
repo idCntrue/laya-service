@@ -1,0 +1,125 @@
+name: Bug report
+description: Something is broken or behaves differently than documented
+title: "[Bug] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report.
+
+        **Security issues: do not use this form.** Report privately — see
+        [SECURITY.md](https://github.com/idCntrue/laya-service/blob/main/SECURITY.md).
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before you file
+      options:
+        - label: I searched existing issues for this problem
+          required: true
+        - label: This is not a security vulnerability
+          required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you observe? Include the exact response or error.
+      placeholder: |
+        POST /v1/robot-dog/localization-reliability returned 503 with
+        {"ok": false, "error": {"code": "model_load_failed", ...}}
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: What should have happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: |
+        The exact commands, in order. A curl command that reproduces it is worth
+        more than a paragraph describing it.
+      render: shell
+      placeholder: |
+        1. make start
+        2. curl -X POST http://127.0.0.1:9800/v1/predict \
+             -H "Authorization: Bearer $LAYA_API_KEY" \
+             -H "Content-Type: application/json" \
+             -d '{"state": {...}, "questions": {...}}'
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: input
+    id: request-id
+    attributes:
+      label: request_id
+      description: |
+        From the error response or the `X-Request-ID` header. This is the single
+        most useful field — it pinpoints the exact log line.
+      placeholder: "b8434ab7ef0d47cd91b92eaf2a084d6c"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines
+      description: |
+        `make logs`, or `journalctl --user -u laya-service -n 50`. Logs are JSON.
+        **Redact your API key** before pasting — the redaction filter catches
+        most cases but do not rely on it.
+      render: json
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: How are you running it?
+      options:
+        - make start / make run (scripts)
+        - systemd user unit
+        - Docker
+        - Something else (describe below)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      description: Output of `git rev-parse --short HEAD`, or the release tag.
+      placeholder: "v0.1.0 or a1b2c3d"
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: |
+        Paste the output of these, plus your OS and Python version.
+      render: shell
+      placeholder: |
+        uname -a
+        python3 --version
+        .venv/bin/pip list | grep -Ei "laya|torch|fastapi|transformers"
+        free -h
+        df -h .
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: |
+        Workarounds you found, when it started, whether it is intermittent.
+        If `/readyz` is involved, note whether the model ever loaded
+        successfully — a cold start downloading weights for minutes is
+        expected, not a bug.

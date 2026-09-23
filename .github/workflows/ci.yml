@@ -1,0 +1,160 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref rather than queueing them.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Never write .pyc files in CI: they only slow the cache down.
+  PYTHONDONTWRITEBYTECODE: "1"
+  # Keep the Hugging Face cache out of the repo.
+  HF_HOME: ${{ github.workspace }}/.hf-cache
+
+jobs:
+  quality:
+    name: lint / typecheck / test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('pyproject.toml', 'requirements/*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-py${{ matrix.python-version }}-
+
+      # CPU-only torch first, so the resolver never considers the CUDA build
+      # (~2.5 GB plus nvidia-* wheels). Same ordering the Makefile uses.
+      - name: Install CPU-only PyTorch
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch==2.9.1+cpu --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install project
+        run: pip install -e ".[dev]"
+
+      - name: Lint (ruff)
+        run: ruff check src tests
+
+      - name: Format check (ruff)
+        run: ruff format --check src tests
+
+      - name: Type check (mypy --strict)
+        run: mypy src tests
+
+      # The suite runs in ~1s because FakeDecisionModel implements the port --
+      # no weights, no network, no GPU. It never downloads the model.
+      - name: Test with coverage
+        run: pytest --cov --cov-report=term-missing --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.11'
+        uses: codecov/codecov-action@v4
+        continue-on-error: true
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+
+  docs:
+    name: docs build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CPU-only PyTorch
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch==2.9.1+cpu --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install project
+        run: pip install -e ".[dev]"
+
+      # Importing the app builds the OpenAPI schema. This catches a route or
+      # schema that is syntactically valid but fails at import time -- which
+      # the test suite would also catch, but only if a test imports it.
+      - name: Build OpenAPI schema
+        run: |
+          python -c "
+          from laya_service.interfaces.http.app import create_app
+          app = create_app()
+          spec = app.openapi()
+          paths = sorted(spec['paths'])
+          print('OpenAPI paths:')
+          for p in paths:
+              print(' ', p)
+          expected = {
+              '/healthz', '/readyz', '/v1/predict',
+              '/v1/robot-dog/localization-reliability',
+          }
+          missing = expected - set(paths)
+          if missing:
+              raise SystemExit(f'FAIL: missing documented paths: {sorted(missing)}')
+          print('OK: all documented paths present')
+          "
+
+  docker:
+    name: docker build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Build only; do not push. A broken Dockerfile should fail the PR, but
+      # publishing images is a separate, deliberate step.
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/Dockerfile
+          push: false
+          load: true
+          tags: laya-service:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify image runs as non-root
+        run: |
+          uid=$(docker run --rm --entrypoint id laya-service:ci -u)
+          echo "container uid: ${uid}"
+          if [ "${uid}" = "0" ]; then
+            echo "FAIL: container runs as root"
+            exit 1
+          fi
+          echo "OK: non-root"
+
+      # Confirms libgomp1 is present -- without it the container starts and
+      # then dies on `import torch` with a libgomp.so.1 error.
+      - name: Verify torch imports inside the image
+        run: docker run --rm --entrypoint python laya-service:ci -c "import torch, laya; print('torch', torch.__version__); print('laya OK')"

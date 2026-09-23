@@ -1,0 +1,49 @@
+# Pre-commit hooks. Install with: pre-commit install
+# Run against everything:        pre-commit run --all-files
+#
+# The hooks mirror `make lint` and `make typecheck` so that CI and the local
+# commit path cannot disagree about what "clean" means.
+
+default_language_version:
+  python: python3.10
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      # Linter first (it fixes import order), then the formatter, so that a
+      # single commit pass leaves the tree stable.
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.2
+    hooks:
+      - id: mypy
+        # Run in strict mode against the source tree only. Tests are checked by
+        # `make typecheck` but excluded here because their fixtures are
+        # inherently loosely typed and the noise outweighs the signal.
+        args: [--strict, --ignore-missing-imports]
+        files: ^src/
+        additional_dependencies:
+          - pydantic>=2.6
+          - pydantic-settings>=2.2
+          - fastapi>=0.110
+          - types-requests
