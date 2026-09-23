@@ -50,6 +50,13 @@ Note that this project is pre-1.0: the API may change in a minor release, and
   subscriptable`, because the runtime class is not generic there — only the
   stub is. The generic form is now declared under `TYPE_CHECKING` and bound to
   the plain class at runtime, which is correct under 3.10, 3.11 and 3.12.
+- **The documentation tests failed on a clean checkout.** They called
+  `create_app()` with no arguments, so on a machine without a `.env` the
+  settings fell back to `HOST=0.0.0.0` with an empty `LAYA_API_KEY` and the
+  startup guard refused to build the app. Green locally (where `.env` exists),
+  red in CI. Settings are now passed explicitly — the guard is the feature, so
+  the test supplies configuration rather than weakening it. Verified by running
+  the whole suite from a directory with no `.env`.
 - **The CI docs job could not construct the app.** With no `.env` present,
   `create_app()` fell back to the defaults — `HOST=0.0.0.0` with an empty
   `LAYA_API_KEY` — and the startup guard correctly refused. The guard is the

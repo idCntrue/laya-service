@@ -48,10 +48,18 @@ ALL_DOCS: Final[tuple[Path, ...]] = (
 def app_paths() -> set[str]:
     """Return every route path the application actually serves.
 
+    Settings are passed explicitly rather than letting ``create_app()`` read the
+    environment. On a developer machine ``.env`` supplies a key; on a clean
+    checkout -- CI, or a fresh clone -- the defaults are ``HOST=0.0.0.0`` with an
+    empty ``LAYA_API_KEY``, and the startup guard correctly refuses to build an
+    unauthenticated public service. The guard is a feature, so the test supplies
+    the configuration instead of weakening it.
+
     Returns:
         Paths from the generated OpenAPI schema, e.g. ``{"/healthz", ...}``.
     """
-    return set(create_app().openapi()["paths"])
+    settings = Settings(host="127.0.0.1", laya_api_key="test-key", _env_file=None)  # type: ignore[call-arg]
+    return set(create_app(settings=settings).openapi()["paths"])
 
 
 #: Headings that introduce the error-code table, in both languages. The parser
