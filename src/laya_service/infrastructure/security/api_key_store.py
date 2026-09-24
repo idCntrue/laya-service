@@ -456,9 +456,7 @@ def _require_time(value: Any, entry: dict[str, Any]) -> datetime:
     """
     parsed = _parse_time(value)
     if parsed is None:
-        raise InvalidApiKeyError(
-            f"api key entry {entry.get('id')!r} is missing 'created_at'"
-        )
+        raise InvalidApiKeyError(f"api key entry {entry.get('id')!r} is missing 'created_at'")
     return parsed
 
 

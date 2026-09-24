@@ -359,7 +359,10 @@ class TestApiKeyEntity:
     def test_is_active_for_a_fresh_key(self) -> None:
         """A key with no expiry and no revocation is active."""
         key = ApiKey(
-            id="a", name="n", prefix="p", scopes=(SCOPE_INFERENCE,),
+            id="a",
+            name="n",
+            prefix="p",
+            scopes=(SCOPE_INFERENCE,),
             created_at=datetime.now(timezone.utc),
         )
         assert key.is_active() is True
@@ -367,7 +370,10 @@ class TestApiKeyEntity:
     def test_has_scope(self) -> None:
         """Scope membership is reported."""
         key = ApiKey(
-            id="a", name="n", prefix="p", scopes=(SCOPE_INFERENCE,),
+            id="a",
+            name="n",
+            prefix="p",
+            scopes=(SCOPE_INFERENCE,),
             created_at=datetime.now(timezone.utc),
         )
         assert key.has_scope(SCOPE_INFERENCE) is True
@@ -376,7 +382,10 @@ class TestApiKeyEntity:
     def test_is_expired(self) -> None:
         """Expiry is reported independently of revocation."""
         key = ApiKey(
-            id="a", name="n", prefix="p", scopes=(SCOPE_INFERENCE,),
+            id="a",
+            name="n",
+            prefix="p",
+            scopes=(SCOPE_INFERENCE,),
             created_at=datetime.now(timezone.utc),
             expires_at=datetime.now(timezone.utc) - timedelta(seconds=1),
         )

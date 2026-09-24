@@ -108,9 +108,7 @@ class FakeDecisionModel:
         self.calls.append((state, questions))
         if self.raise_on_predict is not None:
             raise self.raise_on_predict
-        return {
-            question_id: self._answer_for(spec) for question_id, spec in questions.items()
-        }
+        return {question_id: self._answer_for(spec) for question_id, spec in questions.items()}
 
     def _answer_for(self, spec: Mapping[str, Any]) -> dict[str, Any]:
         """Build one answer entry in the shape Laya uses for that question type.

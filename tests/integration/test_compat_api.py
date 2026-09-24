@@ -289,9 +289,7 @@ class TestAnthropicMessages:
 
     def test_unknown_model_is_rejected(self, client: TestClient) -> None:
         """An unserved model is an error."""
-        response = client.post(
-            "/v1/messages", json={**ANTHROPIC_BODY, "model": "claude-sonnet-5"}
-        )
+        response = client.post("/v1/messages", json={**ANTHROPIC_BODY, "model": "claude-sonnet-5"})
         assert response.status_code == 400
 
 

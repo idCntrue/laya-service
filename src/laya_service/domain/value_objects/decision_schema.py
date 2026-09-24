@@ -69,20 +69,23 @@ _VENDOR_KEYS: Final[frozenset[str]] = frozenset(
 #: JSON Schema keywords this module understands on a property. Anything outside
 #: this set is rejected: a whitelist cannot leak an unmappable construct
 #: through, whereas a blacklist eventually will.
-_SUPPORTED_KEYWORDS: Final[frozenset[str]] = frozenset(
-    {
-        "type",
-        "description",
-        "title",
-        "enum",
-        "enumDescriptions",
-        "oneOf",
-        "minimum",
-        "maximum",
-        "default",
-        "examples",
-    }
-) | _VENDOR_KEYS
+_SUPPORTED_KEYWORDS: Final[frozenset[str]] = (
+    frozenset(
+        {
+            "type",
+            "description",
+            "title",
+            "enum",
+            "enumDescriptions",
+            "oneOf",
+            "minimum",
+            "maximum",
+            "default",
+            "examples",
+        }
+    )
+    | _VENDOR_KEYS
+)
 
 #: Largest instruction we will forward. Laya budgets the question head at 192
 #: tokens and truncates the instruction to make room for the options, so an
@@ -233,14 +236,11 @@ def _require_object_schema(schema: Mapping[str, Any]) -> None:
         UnsupportedSchemaError: If the schema is not an object with properties.
     """
     if not isinstance(schema, Mapping):
-        raise UnsupportedSchemaError(
-            f"the schema must be a mapping, got {type(schema).__name__}"
-        )
+        raise UnsupportedSchemaError(f"the schema must be a mapping, got {type(schema).__name__}")
     declared = schema.get("type")
     if declared not in (None, "object"):
         raise UnsupportedSchemaError(
-            f"the schema must describe an object (a set of named decisions), "
-            f"got type {declared!r}"
+            f"the schema must describe an object (a set of named decisions), got type {declared!r}"
         )
 
 
@@ -428,9 +428,9 @@ def _compile_boolean(name: str, prop: Mapping[str, Any]) -> QuestionPlan:
     if not isinstance(threshold, (int, float)) or isinstance(threshold, bool):
         raise UnsupportedSchemaError(
             f"property {name!r} is a boolean, but this model answers with a "
-            f"probability, not a decision. Add \"x-laya-threshold\": 0.5 to say "
+            f'probability, not a decision. Add "x-laya-threshold": 0.5 to say '
             f"where to draw the line, or declare "
-            f"{{\"type\": \"number\"}} to receive the probability itself."
+            f'{{"type": "number"}} to receive the probability itself.'
         )
     if not 0.0 <= float(threshold) <= 1.0:
         raise UnsupportedSchemaError(
@@ -473,7 +473,7 @@ def _compile_numeric(name: str, prop: Mapping[str, Any], *, integral: bool) -> Q
     if not isinstance(maximum, (int, float)) or isinstance(maximum, bool):
         raise UnsupportedSchemaError(
             f"property {name!r} is numeric but declares no 'maximum', so there is "
-            f"no scale to score on. Add \"minimum\": 0 and \"maximum\": N to "
+            f'no scale to score on. Add "minimum": 0 and "maximum": N to '
             f"describe an ordinal rating."
         )
     if not isinstance(minimum, (int, float)) or isinstance(minimum, bool):
@@ -526,8 +526,7 @@ def _compile_explicit(name: str, prop: Mapping[str, Any], kind: str) -> Question
     """
     if kind not in {"noul", "choice", "score"}:
         raise UnsupportedSchemaError(
-            f"property {name!r}: 'x-laya-type' must be one of noul, choice, score; "
-            f"got {kind!r}"
+            f"property {name!r}: 'x-laya-type' must be one of noul, choice, score; got {kind!r}"
         )
     criteria = prop.get("x-laya-criteria")
     if kind in {"choice", "score"} and criteria is None:

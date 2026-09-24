@@ -156,25 +156,19 @@ class TestOneOfToChoice:
         """A variant with no const has no label."""
         with pytest.raises(UnsupportedSchemaError, match="must be an object with"):
             compile_schema(
-                object_schema(
-                    x={"description": "?", "oneOf": [{"description": "no const here"}]}
-                )
+                object_schema(x={"description": "?", "oneOf": [{"description": "no const here"}]})
             )
 
     def test_non_string_const_is_rejected(self) -> None:
         """Only string labels are supported."""
         with pytest.raises(UnsupportedSchemaError, match="non-string"):
-            compile_schema(
-                object_schema(x={"description": "?", "oneOf": [{"const": 42}]})
-            )
+            compile_schema(object_schema(x={"description": "?", "oneOf": [{"const": 42}]}))
 
     def test_duplicate_const_is_rejected(self) -> None:
         """Two variants with the same label are ambiguous."""
         with pytest.raises(UnsupportedSchemaError, match="duplicate"):
             compile_schema(
-                object_schema(
-                    x={"description": "?", "oneOf": [{"const": "a"}, {"const": "a"}]}
-                )
+                object_schema(x={"description": "?", "oneOf": [{"const": "a"}, {"const": "a"}]})
             )
 
 
@@ -188,9 +182,7 @@ class TestBooleanToNoul:
         behalf *and* destroy the probability, which they could not recover.
         """
         with pytest.raises(UnsupportedSchemaError, match="x-laya-threshold"):
-            compile_schema(
-                object_schema(x={"type": "boolean", "description": "Is it spam?"})
-            )
+            compile_schema(object_schema(x={"type": "boolean", "description": "Is it spam?"}))
 
     def test_boolean_with_threshold_compiles(self) -> None:
         """An explicit threshold makes the derivation visible and opt-in."""
@@ -210,9 +202,7 @@ class TestBooleanToNoul:
         """A threshold outside [0, 1] is not a probability."""
         with pytest.raises(UnsupportedSchemaError, match=r"\[0, 1\]"):
             compile_schema(
-                object_schema(
-                    x={"type": "boolean", "description": "?", "x-laya-threshold": 1.5}
-                )
+                object_schema(x={"type": "boolean", "description": "?", "x-laya-threshold": 1.5})
             )
 
     def test_noul_renders_boolean_at_the_threshold(self) -> None:
@@ -232,9 +222,7 @@ class TestBooleanToNoul:
     def test_threshold_boundary_is_inclusive(self) -> None:
         """A probability exactly at the threshold counts as true."""
         compiled = compile_schema(
-            object_schema(
-                x={"type": "boolean", "description": "?", "x-laya-threshold": 0.5}
-            )
+            object_schema(x={"type": "boolean", "description": "?", "x-laya-threshold": 0.5})
         )
         assert render_arguments(compiled, {"x": {"noul": 0.5}}) == {"x": True}
 
@@ -261,9 +249,7 @@ class TestNumericToScore:
     def test_number_returns_the_expected_value(self) -> None:
         """A float property receives the expected value, scaled to its range."""
         compiled = compile_schema(
-            object_schema(
-                x={"type": "number", "minimum": 0, "maximum": 4, "description": "?"}
-            )
+            object_schema(x={"type": "number", "minimum": 0, "maximum": 4, "description": "?"})
         )
         result = render_arguments(compiled, {"x": {"score": 2.0}})
         assert result["x"] == pytest.approx(0.5)
@@ -275,9 +261,7 @@ class TestNumericToScore:
         property, so emitting one would break the caller's own validator.
         """
         compiled = compile_schema(
-            object_schema(
-                x={"type": "integer", "minimum": 0, "maximum": 4, "description": "?"}
-            )
+            object_schema(x={"type": "integer", "minimum": 0, "maximum": 4, "description": "?"})
         )
         result = render_arguments(compiled, {"x": {"score": 2.4}})
         assert result["x"] == 2
@@ -292,9 +276,7 @@ class TestNumericToScore:
         """An inverted range is a caller bug."""
         with pytest.raises(UnsupportedSchemaError, match="must exceed"):
             compile_schema(
-                object_schema(
-                    x={"type": "number", "minimum": 5, "maximum": 2, "description": "?"}
-                )
+                object_schema(x={"type": "number", "minimum": 5, "maximum": 2, "description": "?"})
             )
 
     def test_oversized_range_is_rejected(self) -> None:
@@ -329,9 +311,7 @@ class TestUnsupportedShapes:
         """
         with pytest.raises(UnsupportedSchemaError, match="unsupported schema keywords"):
             compile_schema(
-                object_schema(
-                    x={"type": "array", "items": {"type": "string"}, "description": "?"}
-                )
+                object_schema(x={"type": "array", "items": {"type": "string"}, "description": "?"})
             )
 
     def test_bare_array_type_is_rejected(self) -> None:
@@ -407,17 +387,13 @@ class TestInstructions:
     def test_title_is_used_when_description_is_absent(self) -> None:
         """A title is an acceptable fallback for a non-choice question."""
         compiled = compile_schema(
-            object_schema(
-                x={"type": "boolean", "title": "Is it urgent?", "x-laya-threshold": 0.5}
-            )
+            object_schema(x={"type": "boolean", "title": "Is it urgent?", "x-laya-threshold": 0.5})
         )
         assert compiled.questions["x"]["instructions"] == "Is it urgent?"
 
     def test_missing_description_synthesises_for_noul(self) -> None:
         """A non-choice question can fall back to the property name."""
-        compiled = compile_schema(
-            object_schema(x={"type": "boolean", "x-laya-threshold": 0.5})
-        )
+        compiled = compile_schema(object_schema(x={"type": "boolean", "x-laya-threshold": 0.5}))
         assert "x" in compiled.questions["x"]["instructions"]
 
     def test_overlong_description_is_rejected(self) -> None:
@@ -454,9 +430,7 @@ class TestExplicitType:
     def test_unknown_explicit_type_is_rejected(self) -> None:
         """Only the three real Laya types are accepted."""
         with pytest.raises(UnsupportedSchemaError, match="must be one of"):
-            compile_schema(
-                object_schema(x={"x-laya-type": "multi", "description": "?"})
-            )
+            compile_schema(object_schema(x={"x-laya-type": "multi", "description": "?"}))
 
     def test_explicit_choice_requires_criteria(self) -> None:
         """A choice with no options is unanswerable."""
