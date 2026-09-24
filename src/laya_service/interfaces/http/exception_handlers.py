@@ -39,6 +39,7 @@ from laya_service.logging_config import get_logger
 __all__ = [
     "STATUS_BY_CODE",
     "build_error_response",
+    "compat_error_response",
     "register_exception_handlers",
 ]
 
@@ -108,10 +109,14 @@ def build_error_response(
 #: these must be translated, because the SDK on the other end parses a different
 #: envelope -- an OpenAI client reading `{"ok": false, ...}` reports an opaque
 #: parse failure instead of the actual problem.
-_COMPAT_PREFIXES: Final[tuple[str, ...]] = ("/v1/chat/completions", "/v1/messages")
+_COMPAT_PREFIXES: Final[tuple[str, ...]] = (
+    "/v1/chat/completions",
+    "/v1/messages",
+    "/v1/models",
+)
 
 
-def _compat_error_response(status_code: int, message: str, path: str) -> JSONResponse | None:
+def compat_error_response(status_code: int, message: str, path: str) -> JSONResponse | None:
     """Render an error in the wire format the request's path implies.
 
     Args:
@@ -181,7 +186,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             path=request.url.path,
             request_id=_request_id(request),
         )
-        compat = _compat_error_response(status_code, exc.message, request.url.path)
+        compat = compat_error_response(status_code, exc.message, request.url.path)
         if compat is not None:
             return compat
         return build_error_response(
@@ -217,7 +222,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             path=request.url.path,
             request_id=_request_id(request),
         )
-        compat = _compat_error_response(422, message, request.url.path)
+        compat = compat_error_response(422, message, request.url.path)
         if compat is not None:
             return compat
         return build_error_response(
@@ -245,10 +250,14 @@ def register_exception_handlers(app: FastAPI) -> None:
             405: "method_not_allowed",
             413: "payload_too_large",
         }.get(exc.status_code, "http_error")
+        message = str(exc.detail) if exc.detail else code.replace("_", " ")
+        compat = compat_error_response(exc.status_code, message, request.url.path)
+        if compat is not None:
+            return compat
         return build_error_response(
             status_code=exc.status_code,
             code=code,
-            message=str(exc.detail) if exc.detail else code.replace("_", " "),
+            message=message,
             request_id=_request_id(request),
         )
 
@@ -276,7 +285,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             error=str(exc),
             exc_info=True,
         )
-        compat = _compat_error_response(
+        compat = compat_error_response(
             500, "an internal error occurred; quote the request id when reporting", request.url.path
         )
         if compat is not None:

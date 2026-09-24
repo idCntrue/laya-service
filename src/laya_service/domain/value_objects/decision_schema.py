@@ -113,6 +113,9 @@ class QuestionPlan:
             the answer is true. ``None`` for every other type.
         enum_values: For a ``choice`` property, the enum in schema order. Used
             to render the answer back as a string.
+        score_minimum: For a ``score`` property, the caller's declared minimum.
+            Laya scores over level indices starting at 0, so the index must be
+            shifted by this to land back on the caller's scale.
         score_max: For a ``score`` property, the highest index, used to render
             the expected value back onto the caller's numeric range.
         integral: Whether the caller declared ``integer``, in which case the
@@ -125,6 +128,7 @@ class QuestionPlan:
     criteria: Mapping[str, Any] | Sequence[str] | None = None
     threshold: float | None = None
     enum_values: tuple[str, ...] = ()
+    score_minimum: int = 0
     score_max: int = 0
     integral: bool = False
 
@@ -500,6 +504,7 @@ def _compile_numeric(name: str, prop: Mapping[str, Any], *, integral: bool) -> Q
         question_type="score",
         instructions=_instructions(name, prop, required=False),
         criteria=criteria,
+        score_minimum=int(minimum),
         score_max=span,
         integral=integral,
     )
@@ -603,7 +608,11 @@ def _render_one(plan: QuestionPlan, entry: Mapping[str, Any]) -> Any:
         probability = _as_float(entry.get("noul", entry.get("value")))
         if probability is None:
             return None
-        return probability >= (plan.threshold or 0.5)
+        # `plan.threshold or 0.5` would treat a legitimate threshold of 0.0 as
+        # absent, since 0.0 is falsy. An explicit `is None` keeps the caller's
+        # value, and the response metadata reports the threshold actually used.
+        threshold = 0.5 if plan.threshold is None else plan.threshold
+        return probability >= threshold
 
     if plan.question_type == "choice":
         value = entry.get("choice")
@@ -615,13 +624,18 @@ def _render_one(plan: QuestionPlan, entry: Mapping[str, Any]) -> Any:
             return None
         # Laya returns the expected value over level indices. `score_max` is the
         # span, so the index maps back onto the caller's own range.
+        # Laya returns the expected value over level *indices*. `_compile_numeric`
+        # labels the levels `minimum .. maximum`, so index E corresponds to the
+        # caller's value `minimum + E`. Dividing by the span instead would emit a
+        # number outside the range the caller declared -- which their own schema
+        # validator would then reject.
+        restored = plan.score_minimum + expected
         if plan.integral:
-            # A caller who declared `integer` must not receive 2.37 -- a real
+            # A caller who declared `integer` must not receive 7.37 -- a real
             # language model would never do that, and their own validator would
             # reject it. `round` already yields an int for a float input.
-            return round(expected)
-        scaled = expected / plan.score_max if plan.score_max else expected
-        return round(scaled, 4)
+            return round(restored)
+        return round(restored, 4)
 
     return None
 

@@ -293,6 +293,63 @@ class TestAnthropicMessages:
         assert response.status_code == 400
 
 
+class TestCompatErrorEnvelopes:
+    """Errors on compat paths must use the SDK's envelope, not ours.
+
+    The auth middleware runs outside the exception-handler stack, so it has to
+    translate for itself. Without that an SDK pointed at /v1/messages reports an
+    opaque parse failure instead of "authentication failed".
+    """
+
+    def test_anthropic_401_uses_the_anthropic_envelope(self, anon_client: TestClient) -> None:
+        """A 401 from the middleware is translated for the Anthropic route."""
+        body = anon_client.post("/v1/messages", json=ANTHROPIC_BODY).json()
+        assert body["type"] == "error"
+        assert body["error"]["type"] == "authentication_error"
+
+    def test_openai_401_uses_the_openai_envelope(self, anon_client: TestClient) -> None:
+        """A 401 from the middleware is translated for the OpenAI route."""
+        body = anon_client.post("/v1/chat/completions", json=OPENAI_BODY).json()
+        assert "error" in body
+        assert "message" in body["error"]
+        assert "ok" not in body
+
+    def test_models_405_is_translated(self, client: TestClient) -> None:
+        """A framework error on /v1/models is translated too."""
+        response = client.post("/v1/models")
+        assert response.status_code == 405
+        assert "error" in response.json()
+        assert "ok" not in response.json()
+
+    def test_native_routes_keep_our_envelope(self, client: TestClient) -> None:
+        """Translation applies only to compat paths, not to our own API."""
+        body = client.post("/v1/predict", json={"state": {}, "questions": {}}).json()
+        assert body["ok"] is False
+        assert body["error"]["code"] == "validation_error"
+
+
+class TestOpenAIContentBlocks:
+    """The OpenAI route accepts the content shapes the SDK sends."""
+
+    def test_accepts_a_content_block_list(self, client: TestClient) -> None:
+        """The SDK sends blocks for multimodal and tool-result turns.
+
+        Declaring content as ``str`` would make Pydantic reject those with 422,
+        while the Anthropic route accepts the equivalent shape -- so the same
+        conversation would work on one endpoint and fail on the other.
+        """
+        body = {
+            **OPENAI_BODY,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "Order #12345 arrived broken"}],
+                }
+            ],
+        }
+        assert client.post("/v1/chat/completions", json=body).status_code == 200
+
+
 class TestModelsEndpoint:
     """``GET /v1/models``."""
 

@@ -151,9 +151,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if request.url.path in PUBLIC_PATHS:
             return await call_next(request)
 
-        # No bootstrap key and no store means authentication is switched off,
-        # which the settings validator only permits on a loopback bind.
-        if not self._api_key and self._store is None:
+        # No bootstrap key means authentication is switched off. The settings
+        # validator only permits that on a loopback bind, so this is the
+        # documented local-development mode rather than an accident.
+        #
+        # Keying this on the *store* instead would lock the service: the store
+        # is always constructed, so `store is None` is never true, and with no
+        # bootstrap key there is nothing left that can authenticate -- including
+        # /admin/keys, which is where a key would have been created.
+        if not self._api_key:
             return await call_next(request)
 
         presented = _extract_credential(request)
@@ -212,6 +218,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         if record is None:
             return None
+
+        # Record usage so an operator can tell a live key from a stale one. The
+        # store treats this as best-effort -- a failure to write telemetry must
+        # never fail the request it is describing.
+        touch = getattr(self._store, "touch", None)
+        if callable(touch):
+            touch(record.id)
+
         return Principal(name=record.name, scopes=record.scopes, key_id=record.id)
 
 
@@ -262,12 +276,25 @@ def _reject(request: Request, presented: str | None) -> Response:
     )
     # Imported lazily to keep this module free of a cycle with
     # exception_handlers, which imports the schemas.
-    from laya_service.interfaces.http.exception_handlers import build_error_response
+    from laya_service.interfaces.http.exception_handlers import (
+        build_error_response,
+        compat_error_response,
+    )
+
+    # Middleware runs outside the exception-handler stack, so the translation
+    # the handlers apply to a compat path must be applied here too. Without it
+    # an SDK pointed at /v1/messages receives this service's own envelope and
+    # reports an opaque parse failure instead of "authentication failed".
+    message = "a valid bearer token is required"
+    compat = compat_error_response(401, message, request.url.path)
+    if compat is not None:
+        compat.headers["WWW-Authenticate"] = "Bearer"
+        return compat
 
     response = build_error_response(
         status_code=401,
         code="unauthorized",
-        message="a valid bearer token is required",
+        message=message,
         request_id=getattr(request.state, "request_id", None),
     )
     response.headers["WWW-Authenticate"] = "Bearer"
@@ -283,11 +310,18 @@ def _forbidden(request: Request) -> Response:
     Returns:
         The 403 response.
     """
-    from laya_service.interfaces.http.exception_handlers import build_error_response
+    from laya_service.interfaces.http.exception_handlers import (
+        build_error_response,
+        compat_error_response,
+    )
 
+    message = "this credential does not grant administrative access"
+    compat = compat_error_response(403, message, request.url.path)
+    if compat is not None:
+        return compat
     return build_error_response(
         status_code=403,
         code="forbidden",
-        message="this credential does not grant administrative access",
+        message=message,
         request_id=getattr(request.state, "request_id", None),
     )

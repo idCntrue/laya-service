@@ -219,6 +219,19 @@ class TestBooleanToNoul:
         assert render_arguments(compiled, {"spam": {"noul": 0.8}}) == {"spam": True}
         assert render_arguments(compiled, {"spam": {"noul": 0.6}}) == {"spam": False}
 
+    def test_zero_threshold_is_honoured(self) -> None:
+        """A threshold of 0.0 means "any non-zero probability is true".
+
+        ``plan.threshold or 0.5`` would treat 0.0 as absent, since 0.0 is falsy,
+        and silently substitute 0.5 -- so the answer would contradict the
+        threshold the response metadata reports.
+        """
+        compiled = compile_schema(
+            object_schema(x={"type": "boolean", "description": "?", "x-laya-threshold": 0.0})
+        )
+        assert render_arguments(compiled, {"x": {"noul": 0.3}}) == {"x": True}
+        assert render_arguments(compiled, {"x": {"noul": 0.0}}) == {"x": True}
+
     def test_threshold_boundary_is_inclusive(self) -> None:
         """A probability exactly at the threshold counts as true."""
         compiled = compile_schema(
@@ -247,12 +260,16 @@ class TestNumericToScore:
         assert len(question["criteria"]) == 4
 
     def test_number_returns_the_expected_value(self) -> None:
-        """A float property receives the expected value, scaled to its range."""
+        """A float property receives the expected value on its own scale.
+
+        Laya returns the expected value over level indices, so index 2 of a
+        0..4 scale is the caller's value 2.0 -- not a normalised 0.5.
+        """
         compiled = compile_schema(
             object_schema(x={"type": "number", "minimum": 0, "maximum": 4, "description": "?"})
         )
         result = render_arguments(compiled, {"x": {"score": 2.0}})
-        assert result["x"] == pytest.approx(0.5)
+        assert result["x"] == pytest.approx(2.0)
 
     def test_integer_returns_a_rounded_integer(self) -> None:
         """An ``integer`` property must not receive 2.37.
@@ -266,6 +283,45 @@ class TestNumericToScore:
         result = render_arguments(compiled, {"x": {"score": 2.4}})
         assert result["x"] == 2
         assert isinstance(result["x"], int)
+
+    def test_score_is_restored_to_the_callers_range(self) -> None:
+        """A non-zero minimum must shift the index back onto the caller's scale.
+
+        Laya scores over level indices starting at 0. ``_compile_numeric`` labels
+        the levels ``minimum..maximum``, so index E is the caller's value
+        ``minimum + E``. Normalising by the span instead emits a number outside
+        the declared range, which the caller's own validator rejects.
+        """
+        compiled = compile_schema(
+            object_schema(
+                severity={
+                    "type": "number",
+                    "minimum": 5,
+                    "maximum": 9,
+                    "description": "How severe?",
+                }
+            )
+        )
+        # Index 2 is the third level, labelled "level 7".
+        assert render_arguments(compiled, {"severity": {"score": 2.0}}) == {"severity": 7.0}
+
+    def test_restored_score_stays_inside_the_declared_range(self) -> None:
+        """Every rendered value must satisfy the caller's own schema."""
+        compiled = compile_schema(
+            object_schema(x={"type": "number", "minimum": 3, "maximum": 7, "description": "?"})
+        )
+        for index in range(5):
+            value = render_arguments(compiled, {"x": {"score": float(index)}})["x"]
+            assert 3.0 <= value <= 7.0, f"index {index} produced {value}"
+
+    def test_integral_score_is_restored_and_rounded(self) -> None:
+        """An integer property is shifted onto its range, then rounded."""
+        compiled = compile_schema(
+            object_schema(x={"type": "integer", "minimum": 1, "maximum": 5, "description": "?"})
+        )
+        result = render_arguments(compiled, {"x": {"score": 2.4}})["x"]
+        assert result == 3
+        assert 1 <= result <= 5
 
     def test_number_without_maximum_is_rejected(self) -> None:
         """With no upper bound there is no scale to score on."""
@@ -506,7 +562,7 @@ class TestRenderArguments:
                 "flag": {"noul": 0.9},
             },
         )
-        assert arguments == {"cat": "b", "score": 1.0, "flag": True}
+        assert arguments == {"cat": "b", "score": 2.0, "flag": True}
 
     def test_missing_answer_is_omitted(self) -> None:
         """An unanswered property is absent, not defaulted.

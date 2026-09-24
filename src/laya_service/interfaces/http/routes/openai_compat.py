@@ -136,6 +136,34 @@ def _select_tool(body: OpenAIChatRequest) -> tuple[str, dict[str, Any]] | JSONRe
     )
 
 
+def _flatten_content(content: Any) -> str:
+    """Reduce an OpenAI content field to plain text.
+
+    A turn's content is a string in the common case, but the SDK sends a list of
+    blocks for multimodal and tool-result turns. Both are reduced to text here,
+    since the model reads prose.
+
+    Args:
+        content: A string, a list of content blocks, or ``None``.
+
+    Returns:
+        The concatenated text, or an empty string when there is none.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, dict):
+                text = block.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+            elif isinstance(block, str):
+                parts.append(block)
+        return "\n".join(parts)
+    return ""
+
+
 def _build_state(body: OpenAIChatRequest) -> dict[str, Any]:
     """Render the conversation as the state the model decides about.
 
@@ -150,9 +178,9 @@ def _build_state(body: OpenAIChatRequest) -> dict[str, Any]:
         A state mapping.
     """
     turns = [
-        {"role": message.role, "content": message.content}
+        {"role": message.role, "content": _flatten_content(message.content)}
         for message in body.messages
-        if message.content
+        if _flatten_content(message.content)
     ]
     if len(turns) == 1:
         # A single turn reads better as a plain observation than as a
@@ -314,5 +342,5 @@ def _estimate_tokens(body: OpenAIChatRequest) -> int:
     Returns:
         An estimated token count.
     """
-    characters = sum(len(message.content or "") for message in body.messages)
+    characters = sum(len(_flatten_content(message.content)) for message in body.messages)
     return max(1, characters // 4)

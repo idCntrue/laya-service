@@ -635,11 +635,16 @@ def call_with_retry(url, payload, headers, attempts=3):
 | `oneOf` + `const` | `choice` | 标准写法，可带 `description` 作评分标准 |
 | `enum` + `enumDescriptions` | `choice` | OpenAI 的约定，给每个选项配说明 |
 | `boolean` | `noul` | ⚠️ **有损**，必须显式给阈值（见下） |
-| `number`（有 min/max） | `score` | 返回期望值，按你的范围缩放 |
-| `integer`（有 min/max） | `score` | 四舍五入为整数，以符合你的 schema |
+| `number`（有 min/max） | `score` | 返回期望值，还原到你的 `minimum`..`maximum` 范围 |
+| `integer`（有 min/max） | `score` | 同上，并四舍五入为整数以符合你的 schema |
 
 **无法映射的形状会被拒绝（400 `unsupported_schema`）**：自由字符串、数组、嵌套对象。
 理由同上——猜一个答案比报错危险。
+
+**数值范围会被精确遵守。** 模型在有序标尺上打分，答案会被还原到你声明的
+`minimum`..`maximum` 区间——所以声明 `{"minimum": 5, "maximum": 9}` 的属性
+永远返回 `5..9` 内的值，不会是归一化的 `0..1`。`integer` 属性会四舍五入，
+因为真实语言模型不会为整数属性返回 `7.37`。
 
 #### 为什么 boolean 必须给阈值
 

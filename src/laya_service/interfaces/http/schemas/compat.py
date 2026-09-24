@@ -76,7 +76,12 @@ class OpenAIMessage(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     role: str = Field(..., description="system | user | assistant | tool")
-    content: str | None = Field(default=None, description="The turn's text content.")
+    # Declared as `Any`, not `str`, because the OpenAI SDK sends a list of
+    # content blocks for multimodal and tool-result turns. Typing it `str` would
+    # make Pydantic reject those with 422 before the route runs -- while the
+    # Anthropic route accepts the equivalent shape, so the same conversation
+    # would work on one endpoint and fail on the other.
+    content: Any = Field(default=None, description="Text, or a list of content blocks.")
     name: str | None = Field(default=None, description="Optional participant name.")
     tool_call_id: str | None = Field(default=None, description="Tool result correlation id.")
 

@@ -34,6 +34,35 @@ Note that this project is pre-1.0: the API may change in a minor release, and
 
 ### Fixed
 
+- **A `boolean` threshold of `0.0` was silently replaced with `0.5`.**
+  `plan.threshold or 0.5` treats `0.0` as absent, because `0.0` is falsy, so an
+  explicit "any non-zero probability is true" threshold produced answers
+  contradicting the threshold reported in the response metadata. Now an
+  explicit `is None` check.
+- **Numeric answers ignored the caller's `minimum`.** Laya scores over level
+  indices starting at 0, so index E is the caller's value `minimum + E`. The
+  renderer divided by the span instead, emitting a normalised `0..1` value —
+  which for a property declared `{"minimum": 5, "maximum": 9}` falls outside the
+  declared range and would be rejected by the caller's own schema validator.
+  Found by review; verified against the live model.
+- **Errors on compatibility paths used the wrong envelope.** The auth middleware
+  runs outside the exception-handler stack, so its 401/403 reached an SDK as
+  `{"ok": false, ...}` — surfacing as an opaque parse failure rather than
+  "authentication failed". `StarletteHTTPException` (404/405/413) and
+  `/v1/models` were likewise untranslated. All four paths now translate.
+- **An empty `LAYA_API_KEY` on a loopback bind locked the service.** The
+  disable-auth branch keyed on the key store being absent, but the store is
+  always constructed, so the branch was dead: every route returned 401 with no
+  credential that could succeed — including `/admin/keys`, where a key would
+  have been created. Restored to keying on the bootstrap key alone.
+- **The OpenAI route rejected content-block lists.** `content` was typed `str`,
+  so Pydantic rejected the list form the SDK sends for multimodal and
+  tool-result turns with 422 — while the Anthropic route accepted the equivalent
+  shape, so the same conversation worked on one endpoint and failed on the other.
+- **`last_used_at` was never written.** The admin surface advertised the field
+  and `JsonApiKeyStore.touch()` existed to populate it, but nothing called it,
+  so every key read as never-used and a stale key was indistinguishable from a
+  live one.
 - **`StructuredLogger` raised `KeyError` on reserved field names.**
   `_logger.info("created", name=...)` — `name` collides with a `LogRecord`
   attribute, and `logging` refuses to overwrite it, so a log call became a 500.
@@ -168,7 +197,7 @@ First working version.
 - **Quality gates**
   - `ruff` (E, F, I, N, UP, B, SIM, RUF) and `ruff format`.
   - `mypy --strict` across source and tests.
-  - 485 tests, 90% coverage, with a 70% floor enforced by `fail_under`.
+  - 494 tests, 90% coverage, with a 70% floor enforced by `fail_under`.
 - **Docs**
   - `README.md` — architecture, deployment, operations, limitations.
   - `API.md` — interface reference (Chinese).

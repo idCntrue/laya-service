@@ -684,12 +684,18 @@ Each property of the tool schema becomes one model question:
 | `oneOf` + `const` | `choice` | The standard form; `description` becomes the rubric |
 | `enum` + `enumDescriptions` | `choice` | OpenAI's convention for per-option rubrics |
 | `boolean` | `noul` | ⚠️ **Lossy** — an explicit threshold is required |
-| `number` (with min/max) | `score` | Returns the expected value, scaled to your range |
-| `integer` (with min/max) | `score` | Rounded to an integer to honour your schema |
+| `number` (with min/max) | `score` | Returns the expected value, restored to your `minimum`..`maximum` range |
+| `integer` (with min/max) | `score` | Same, rounded to an integer to honour your schema |
 
 **Shapes with no mapping are rejected (400 `unsupported_schema`)**: free-form
 strings, arrays, and nested objects. Guessing an answer is more dangerous than
 failing, for the same reason as above.
+
+**Numeric ranges are honoured exactly.** The model scores over an ordinal scale,
+and the answer is shifted back onto the `minimum`..`maximum` you declared — so a
+property declared `{"minimum": 5, "maximum": 9}` always returns a value in
+`5..9`, never a normalised `0..1`. An `integer` property is rounded, because a
+real language model would never return `7.37` for an integer.
 
 #### Why `boolean` requires a threshold
 
