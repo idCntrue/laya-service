@@ -1,13 +1,20 @@
 # Laya Service
 
+[![CI](https://github.com/idCntrue/laya-service/actions/workflows/ci.yml/badge.svg)](https://github.com/idCntrue/laya-service/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](pyproject.toml)
+
 A production HTTP service wrapping the [Laya](https://huggingface.co/convaiinnovations/laya)
 non-autoregressive decision engine, built as a Clean Architecture / Hexagonal
 application.
 
-The model answers natural-language questions about a situation and returns a
-boolean plus a probability. This service exposes that capability over HTTP with
-authentication, structured logging, health probes, graceful shutdown, and a
-dependency graph that keeps Laya replaceable.
+The model reads English text and answers typed questions about it — a `noul`
+question returns the probability that the answer is true, `choice` returns the
+winning option, `score` returns an ordinal rating — all in a single forward
+pass. It does **not** generate text, and its zero-shot probabilities are **not**
+calibrated. This service exposes that capability over HTTP with authentication,
+structured logging, health probes, graceful shutdown, and a dependency graph
+that keeps Laya replaceable.
 
 > **中文版：** [README.zh-CN.md](README.zh-CN.md). Both language versions are kept
 > in sync; if they disagree, the English one describes the code and the Chinese

@@ -1,12 +1,17 @@
 # Laya Service
 
+[![CI](https://github.com/idCntrue/laya-service/actions/workflows/ci.yml/badge.svg)](https://github.com/idCntrue/laya-service/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](pyproject.toml)
+
 把 [Laya](https://huggingface.co/convaiinnovations/laya) 非自回归决策引擎封装成
 生产级 HTTP 服务的项目，按整洁架构（Clean Architecture）/ 六边形架构
 （Hexagonal）组织。
 
-模型对一段情境描述回答自然语言问题，返回布尔判断与概率。本服务把这套能力通过
-HTTP 暴露出来，并附带鉴权、结构化日志、健康探针、优雅关闭，以及一套让 Laya
-可替换的依赖图。
+模型读取英文文本并回答带类型的问题 —— `noul` 返回「为真」的概率，`choice`
+返回命中的选项，`score` 返回有序评分 —— 全部在一次前向传播中完成。它**不会
+生成文本**，且零样本概率**未经校准**。本服务把这套能力通过 HTTP 暴露出来，并
+附带鉴权、结构化日志、健康探针、优雅关闭，以及一套让 Laya 可替换的依赖图。
 
 > **English:** [README.md](README.md)。中英两份文档保持同步；若有出入，以英文版
 > 为准（它描述的是代码的实际行为）。

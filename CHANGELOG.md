@@ -142,7 +142,7 @@ First working version.
 - **Quality gates**
   - `ruff` (E, F, I, N, UP, B, SIM, RUF) and `ruff format`.
   - `mypy --strict` across source and tests.
-  - 321 tests, 92% coverage, with a 70% floor enforced by `fail_under`.
+  - 325 tests, 92% coverage, with a 70% floor enforced by `fail_under`.
 - **Docs**
   - `README.md` — architecture, deployment, operations, limitations.
   - `API.md` — interface reference (Chinese).

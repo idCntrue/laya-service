@@ -284,6 +284,40 @@ class TestConfigDocumented:
         assert settings.preload_model is False
 
 
+class TestOpeningDescriptionIsAccurate:
+    """The first thing a reader sees must not misdescribe the model."""
+
+    #: Claims that are wrong about this model and must not appear in the
+    #: opening paragraphs of a README.
+    FORBIDDEN = (
+        "returns a boolean",
+        "返回布尔判断",
+    )
+
+    @pytest.mark.parametrize("doc", [ROOT / "README.md", ROOT / "README.zh-CN.md"])
+    def test_does_not_describe_noul_as_a_boolean(self, doc: Path) -> None:
+        """``noul`` returns a probability, not a boolean.
+
+        The distinction is the single most common way to misuse this service,
+        and an opening line saying "returns a boolean" teaches the wrong model
+        before the reader reaches the caveat.
+        """
+        # Only the opening section, before the first horizontal rule.
+        opening = doc.read_text(encoding="utf-8").split("\n---\n", 1)[0]
+        offenders = [claim for claim in self.FORBIDDEN if claim in opening]
+        assert not offenders, (
+            f"{doc.name} opening misdescribes the output as a boolean: {offenders}"
+        )
+
+    @pytest.mark.parametrize("doc", [ROOT / "README.md", ROOT / "README.zh-CN.md"])
+    def test_states_that_it_does_not_generate_text(self, doc: Path) -> None:
+        """Readers should learn the generation limit before they design around it."""
+        opening = doc.read_text(encoding="utf-8").split("\n---\n", 1)[0]
+        assert "not" in opening.lower() or "不会" in opening, (
+            f"{doc.name} opening should state what the model does not do"
+        )
+
+
 class TestKnownLimitationsAreHonest:
     """Claims the docs make about limitations are actually true."""
 
