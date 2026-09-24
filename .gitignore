@@ -54,6 +54,10 @@ models/
 *.pth
 .cache/
 
+# --- api key store ---------------------------------------------------------
+# Holds sha256 hashes, not plaintext, but it is still a credential store and
+# must never be committed. Created 0600 at runtime.
+data/
 # --- agent / editor local state --------------------------------------------
 # Claude Code writes machine-specific permission lists here, including absolute
 # paths from this host. Never commit it.

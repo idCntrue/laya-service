@@ -31,6 +31,8 @@
 - [调用示例](#调用示例)
 - [关键概念：noul 不是布尔值](#关键概念noul-不是布尔值)
 - [超时与性能](#超时与性能)
+- [兼容层：OpenAI / Anthropic](#兼容层openai--anthropic)
+- [API Key 管理](#api-key-管理)
 - [常见问题](#常见问题)
 
 ---
@@ -604,6 +606,329 @@ def call_with_retry(url, payload, headers, attempts=3):
 - **单进程**：模型约占 2 GB RSS。14 GB 机器上**不要**加多 worker，会 OOM。要扩容请横向加机器
 - **无请求队列 / 无准入控制**：并发请求会一起加载模型然后争抢 CPU。预期有并发压力时，请在反代层加并发上限
 - **CPU 推理慢**：预算是「秒」级，不是「毫秒」级
+
+---
+
+## 兼容层：OpenAI / Anthropic
+
+本服务提供 **OpenAI** 与 **Anthropic** 兼容的接口，让你用现成的官方 SDK 直接连接。
+把 SDK 的 `base_url` 指过来即可，不用改客户端代码。
+
+> ### ⚠️ 只支持工具调用，不支持聊天
+>
+> **本服务背后的模型是分类器，不生成文本。** 它读一段英文，回答结构化问题；
+> 它不会写句子——这是模型架构决定的，改不了。
+>
+> 所以兼容层映射的是两个 API 的**工具调用（tool calling / tool use）**能力：
+> 你用工具 schema 描述「要判断什么」，答案以工具调用的参数形式返回。
+>
+> **聊天请求会被拒绝（400），而不是返回一个看起来像回答的东西。** 这是刻意的：
+> 一个假装的生成结果，客户端无法分辨真假，会基于它继续开发。
+
+### 映射规则
+
+工具 schema 的每个属性变成一个模型问题：
+
+| JSON Schema | 模型题型 | 说明 |
+|---|---|---|
+| `enum`（字符串数组） | `choice` | **顺序即标签顺序**，不会被排序 |
+| `oneOf` + `const` | `choice` | 标准写法，可带 `description` 作评分标准 |
+| `enum` + `enumDescriptions` | `choice` | OpenAI 的约定，给每个选项配说明 |
+| `boolean` | `noul` | ⚠️ **有损**，必须显式给阈值（见下） |
+| `number`（有 min/max） | `score` | 返回期望值，按你的范围缩放 |
+| `integer`（有 min/max） | `score` | 四舍五入为整数，以符合你的 schema |
+
+**无法映射的形状会被拒绝（400 `unsupported_schema`）**：自由字符串、数组、嵌套对象。
+理由同上——猜一个答案比报错危险。
+
+#### 为什么 boolean 必须给阈值
+
+`noul` 返回的是**「为真」的概率**，不是判断。任何替调用方定的阈值都是我们编的，
+而且概率会被销毁（调用方无法重新设阈值）。所以：
+
+```jsonc
+{
+  "type": "boolean",
+  "description": "Is this spam?",
+  "x-laya-threshold": 0.7      // 必须显式声明
+}
+```
+
+想拿到概率本身，就用数字类型：
+
+```jsonc
+{"type": "number", "minimum": 0, "maximum": 1, "description": "Spam likelihood"}
+```
+
+### base_url
+
+| SDK | base_url | 鉴权头 |
+|---|---|---|
+| OpenAI | `http://<host>:9800/v1` | `Authorization: Bearer <key>` |
+| Anthropic | `http://<host>:9800` | `x-api-key: <key>` |
+
+两种鉴权头服务端都接受，所以你也可以用 Bearer 调 Anthropic 接口。
+
+### Anthropic 调用样例
+
+```python
+from anthropic import Anthropic
+
+client = Anthropic(
+    base_url="http://127.0.0.1:9800",      # 注意：不含 /v1
+    api_key="laya_sk_...",                 # 或 .env 里的 LAYA_API_KEY
+)
+
+message = client.messages.create(
+    model="english",
+    max_tokens=1024,                       # 必填但被忽略——没有生成可限制
+    messages=[{
+        "role": "user",
+        "content": "Order #12345 arrived broken and I want my money back",
+    }],
+    tools=[{
+        "name": "classify_ticket",
+        "description": "Classify a support ticket.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "enum": ["refund", "technical", "billing"],
+                    "description": "Which team should handle this?",
+                },
+                "churn_risk": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "How likely is the customer to leave?",
+                },
+                "needs_human": {
+                    "type": "boolean",
+                    "description": "Does this need a human agent?",
+                    "x-laya-threshold": 0.5,
+                },
+            },
+        },
+    }],
+    tool_choice={"type": "tool", "name": "classify_ticket"},
+)
+
+# 答案在 tool_use 块的 input 里（是对象，不是 JSON 字符串）
+block = message.content[0]
+print(block.type)        # "tool_use"
+print(block.name)        # "classify_ticket"
+print(block.input)       # {'category': 'refund', 'churn_risk': 0.71, 'needs_human': True}
+print(message.stop_reason)   # "tool_use"
+```
+
+### OpenAI 调用样例
+
+**`POST /v1/chat/completions`** —— 与 Anthropic 的 `POST /v1/messages` 等价。
+
+```python
+import json
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://127.0.0.1:9800/v1",   # 注意：含 /v1
+    api_key="laya_sk_...",
+)
+
+response = client.chat.completions.create(
+    model="english",
+    messages=[{"role": "user", "content": "The app crashes when I upload a photo"}],
+    tools=[{
+        "type": "function",
+        "function": {
+            "name": "classify_ticket",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "category": {
+                        "type": "string",
+                        "enum": ["refund", "technical", "billing"],
+                        "description": "Which team should handle this?",
+                    },
+                },
+            },
+        },
+    }],
+    tool_choice={"type": "function", "function": {"name": "classify_ticket"}},
+)
+
+call = response.choices[0].message.tool_calls[0]
+print(call.function.name)                        # "classify_ticket"
+print(json.loads(call.function.arguments))       # {'category': 'technical'}
+print(response.choices[0].finish_reason)         # "tool_calls"
+```
+
+> 注意两处差异：Anthropic 的 `input` 是**对象**，OpenAI 的 `arguments` 是
+> **JSON 字符串**（SDK 会替你解析）。
+
+### curl 样例（Anthropic 格式）
+
+```bash
+curl -X POST http://127.0.0.1:9800/v1/messages \
+  -H "x-api-key: $LAYA_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "english",
+    "max_tokens": 1024,
+    "messages": [{"role": "user", "content": "I was charged twice this month"}],
+    "tools": [{
+      "name": "classify",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": ["billing", "technical", "refund"],
+            "description": "Which team should handle this?"
+          }
+        }
+      }
+    }],
+    "tool_choice": {"type": "tool", "name": "classify"}
+  }'
+```
+
+### GET /v1/models
+
+列出可用的 `model` 值：
+
+```bash
+curl http://127.0.0.1:9800/v1/models -H "Authorization: Bearer $LAYA_API_KEY"
+```
+
+```json
+{"object": "list", "data": [{"id": "english", "object": "model",
+  "created": 0, "owned_by": "laya-service"}]}
+```
+
+### 被忽略的字段
+
+以下字段会被接受但**不起作用**——服务不生成文本，它们没有意义：
+
+`temperature`、`top_p`、`top_k`、`max_tokens`、`stop`、`seed`、`presence_penalty`、
+`frequency_penalty`、`logprobs`、`response_format`、`user`、`metadata`、`system`
+
+**会被拒绝的字段**（静默忽略会导致错误解读，所以报错）：
+
+| 字段 | 原因 |
+|---|---|
+| `stream: true` | 一次前向就出全部答案，没有可流式的内容 |
+| `n > 1` | 一次前向只产生一组答案，返回更少会是静默错误 |
+
+### 响应中的 `_laya` 块
+
+两个兼容接口的响应都带一个 `_laya` 元数据块（非标准字段，忽略它不影响使用）：
+
+```json
+"_laya": {
+  "backend": "auto",
+  "latency_ms": 412.3,
+  "derived_thresholds": {"needs_human": 0.5},
+  "note": "Probabilities from this model are not calibrated. ..."
+}
+```
+
+`derived_thresholds` 记录了哪些布尔属性是**推导**出来的、用的什么阈值——这样
+「模型给的概率」和「我们替你做的判断」是分开的。
+
+---
+
+## API Key 管理
+
+除 `.env` 里的 `LAYA_API_KEY` 外，还可以通过 `/admin/keys` 管理多个 Key。
+
+> **`.env` 里的那个 Key 是管理员 Key**，永远有效，用于创建第一个 Key，也是
+> 所有 Key 都被吊销后的恢复通道。它不写入 Key 文件。
+
+所有 `/admin/*` 接口都要求 **admin 权限**——只读推理 Key 无法给自己签发新 Key。
+
+### 存储
+
+Key 存在 JSON 文件里（默认 `data/api_keys.json`，可用 `API_KEYS_PATH` 改）：
+
+- **只存 `sha256` 哈希，不存明文**。明文只在创建响应里出现一次，之后无法找回。
+- 文件权限 `0600`。
+- 比对使用常量时间算法，且**遍历所有记录不提前退出**——响应时间不泄露 Key 是否存在。
+
+### `GET /admin/keys`
+
+```bash
+curl "http://127.0.0.1:9800/admin/keys?include_revoked=false" \
+  -H "Authorization: Bearer $LAYA_API_KEY"
+```
+
+```json
+{
+  "keys": [{
+    "id": "32e64954c0244a91bb51f642cfef16e4",
+    "name": "grafana-prod",
+    "prefix": "laya_sk_u825",
+    "scopes": ["inference"],
+    "created_at": "2026-09-24T03:42:48+00:00",
+    "expires_at": null,
+    "revoked_at": null,
+    "last_used_at": null
+  }],
+  "available_scopes": ["admin", "inference"],
+  "default_scopes": ["inference"]
+}
+```
+
+### `POST /admin/keys`
+
+```bash
+curl -X POST http://127.0.0.1:9800/admin/keys \
+  -H "Authorization: Bearer $LAYA_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "grafana-prod", "scopes": ["inference"]}'
+```
+
+```json
+{
+  "id": "32e64954c0244a91bb51f642cfef16e4",
+  "name": "grafana-prod",
+  "prefix": "laya_sk_u825",
+  "scopes": ["inference"],
+  "created_at": "2026-09-24T03:42:48+00:00",
+  "secret": "laya_sk_u825..."
+}
+```
+
+> ⚠️ **`secret` 只在这一条响应里出现。** 存好它，之后无法找回。
+> 不传 `scopes` 时默认只有 `inference`；要签发管理员 Key 必须显式写 `["admin", "inference"]`。
+
+### `GET /admin/keys/{key_id}`
+
+```bash
+curl http://127.0.0.1:9800/admin/keys/32e64954c0244a91bb51f642cfef16e4 \
+  -H "Authorization: Bearer $LAYA_API_KEY"
+```
+
+### `PATCH /admin/keys/{key_id}`
+
+改名字、权限或有效期。**未提供的字段保持不变**：
+
+```bash
+curl -X PATCH http://127.0.0.1:9800/admin/keys/32e64954c0244a91bb51f642cfef16e4 \
+  -H "Authorization: Bearer $LAYA_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "grafana-staging"}'
+```
+
+### `DELETE /admin/keys/{key_id}`
+
+吊销（**立即生效**，记录保留以便审计）：
+
+```bash
+curl -X DELETE http://127.0.0.1:9800/admin/keys/32e64954c0244a91bb51f642cfef16e4 \
+  -H "Authorization: Bearer $LAYA_API_KEY"
+```
 
 ---
 

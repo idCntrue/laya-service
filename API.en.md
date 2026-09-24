@@ -32,6 +32,8 @@ HTTP interface for the Laya decision-model inference service.
 - [Calling the service](#calling-the-service)
 - [The one concept people get wrong: `noul` is not a boolean](#the-one-concept-people-get-wrong-noul-is-not-a-boolean)
 - [Timeouts and performance](#timeouts-and-performance)
+- [Compatibility layer: OpenAI / Anthropic](#compatibility-layer-openai--anthropic)
+- [API key administration](#api-key-administration)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -649,6 +651,348 @@ both accuracy and cost. See [README](README.md#limitations-you-must-not-ignore).
   and then contend for CPU. Add a concurrency limit at the proxy if you expect
   load.
 - **CPU inference is slow.** Budget in seconds, not milliseconds.
+
+---
+
+## Compatibility layer: OpenAI / Anthropic
+
+This service exposes **OpenAI-** and **Anthropic-compatible** endpoints, so an
+unmodified official SDK can connect to it. Point the SDK's `base_url` here; no
+client code changes.
+
+> ### ⚠️ Tool calling only — not chat
+>
+> **The model behind this service is a classifier. It does not generate text.**
+> It reads English and answers structured questions; it cannot write a sentence,
+> and that is fixed by the model architecture.
+>
+> So the compatibility layer maps the **tool calling / tool use** capability of
+> both APIs: you describe *what to decide* with a tool schema, and the answer
+> arrives as the tool call's arguments.
+>
+> **A chat request is rejected (400) rather than answered with something that
+> looks like a reply.** That is deliberate: a faked generation is
+> indistinguishable from a real one, and a caller would build on it.
+
+### Mapping rules
+
+Each property of the tool schema becomes one model question:
+
+| JSON Schema | Question type | Notes |
+|---|---|---|
+| `enum` (strings) | `choice` | **Order is the label order**; it is never sorted |
+| `oneOf` + `const` | `choice` | The standard form; `description` becomes the rubric |
+| `enum` + `enumDescriptions` | `choice` | OpenAI's convention for per-option rubrics |
+| `boolean` | `noul` | ⚠️ **Lossy** — an explicit threshold is required |
+| `number` (with min/max) | `score` | Returns the expected value, scaled to your range |
+| `integer` (with min/max) | `score` | Rounded to an integer to honour your schema |
+
+**Shapes with no mapping are rejected (400 `unsupported_schema`)**: free-form
+strings, arrays, and nested objects. Guessing an answer is more dangerous than
+failing, for the same reason as above.
+
+#### Why `boolean` requires a threshold
+
+`noul` returns the **probability that the answer is true**, not a decision. Any
+threshold we applied would be invented on your behalf, and the probability would
+be destroyed — you could not re-threshold it. So:
+
+```jsonc
+{
+  "type": "boolean",
+  "description": "Is this spam?",
+  "x-laya-threshold": 0.7      // required
+}
+```
+
+To receive the probability itself, use a numeric property:
+
+```jsonc
+{"type": "number", "minimum": 0, "maximum": 1, "description": "Spam likelihood"}
+```
+
+### base_url
+
+| SDK | base_url | Auth header |
+|---|---|---|
+| OpenAI | `http://<host>:9800/v1` | `Authorization: Bearer <key>` |
+| Anthropic | `http://<host>:9800` | `x-api-key: <key>` |
+
+The server accepts both header shapes, so a bearer token also works against the
+Anthropic endpoint.
+
+### Anthropic example
+
+```python
+from anthropic import Anthropic
+
+client = Anthropic(
+    base_url="http://127.0.0.1:9800",      # note: no /v1
+    api_key="laya_sk_...",                 # or the LAYA_API_KEY from .env
+)
+
+message = client.messages.create(
+    model="english",
+    max_tokens=1024,                       # required by the SDK; ignored here
+    messages=[{
+        "role": "user",
+        "content": "Order #12345 arrived broken and I want my money back",
+    }],
+    tools=[{
+        "name": "classify_ticket",
+        "description": "Classify a support ticket.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "enum": ["refund", "technical", "billing"],
+                    "description": "Which team should handle this?",
+                },
+                "churn_risk": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "How likely is the customer to leave?",
+                },
+                "needs_human": {
+                    "type": "boolean",
+                    "description": "Does this need a human agent?",
+                    "x-laya-threshold": 0.5,
+                },
+            },
+        },
+    }],
+    tool_choice={"type": "tool", "name": "classify_ticket"},
+)
+
+# The answer is the tool_use block's input -- an object, not a JSON string
+block = message.content[0]
+print(block.type)        # "tool_use"
+print(block.name)        # "classify_ticket"
+print(block.input)       # {'category': 'refund', 'churn_risk': 0.71, 'needs_human': True}
+print(message.stop_reason)   # "tool_use"
+```
+
+### OpenAI example
+
+`POST /v1/chat/completions` — the OpenAI counterpart of `POST /v1/messages`.
+
+```python
+import json
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://127.0.0.1:9800/v1",   # note: includes /v1
+    api_key="laya_sk_...",
+)
+
+response = client.chat.completions.create(
+    model="english",
+    messages=[{"role": "user", "content": "The app crashes when I upload a photo"}],
+    tools=[{
+        "type": "function",
+        "function": {
+            "name": "classify_ticket",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "category": {
+                        "type": "string",
+                        "enum": ["refund", "technical", "billing"],
+                        "description": "Which team should handle this?",
+                    },
+                },
+            },
+        },
+    }],
+    tool_choice={"type": "function", "function": {"name": "classify_ticket"}},
+)
+
+call = response.choices[0].message.tool_calls[0]
+print(call.function.name)                        # "classify_ticket"
+print(json.loads(call.function.arguments))       # {'category': 'technical'}
+print(response.choices[0].finish_reason)         # "tool_calls"
+```
+
+> Note the difference: Anthropic's `input` is an **object**; OpenAI's
+> `arguments` is a **JSON string** that the SDK parses for you.
+
+### curl example (Anthropic format)
+
+```bash
+curl -X POST http://127.0.0.1:9800/v1/messages \
+  -H "x-api-key: $LAYA_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "english",
+    "max_tokens": 1024,
+    "messages": [{"role": "user", "content": "I was charged twice this month"}],
+    "tools": [{
+      "name": "classify",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": ["billing", "technical", "refund"],
+            "description": "Which team should handle this?"
+          }
+        }
+      }
+    }],
+    "tool_choice": {"type": "tool", "name": "classify"}
+  }'
+```
+
+### GET /v1/models
+
+Lists the accepted `model` values.
+
+```bash
+curl http://127.0.0.1:9800/v1/models -H "Authorization: Bearer $LAYA_API_KEY"
+```
+
+```json
+{"object": "list", "data": [{"id": "english", "object": "model",
+  "created": 0, "owned_by": "laya-service"}]}
+```
+
+### Ignored fields
+
+These are accepted and have **no effect** — the service generates nothing, so
+they are meaningless:
+
+`temperature`, `top_p`, `top_k`, `max_tokens`, `stop`, `seed`,
+`presence_penalty`, `frequency_penalty`, `logprobs`, `response_format`, `user`,
+`metadata`, `system`
+
+**Rejected fields** (silently ignoring these would produce a response the caller
+misreads, so they error):
+
+| Field | Reason |
+|---|---|
+| `stream: true` | Every answer comes from one forward pass; there is nothing to stream |
+| `n > 1` | One forward pass yields one answer set; returning fewer would be silent |
+
+### The `_laya` block
+
+Both compat responses carry a `_laya` metadata block (non-standard; ignoring it
+is fine):
+
+```json
+"_laya": {
+  "backend": "auto",
+  "latency_ms": 412.3,
+  "derived_thresholds": {"needs_human": 0.5},
+  "note": "Probabilities from this model are not calibrated. ..."
+}
+```
+
+`derived_thresholds` records which boolean properties were **derived** and at
+what threshold, so "the probability the model produced" and "the decision we
+made for you" stay distinguishable.
+
+---
+
+## API key administration
+
+Beyond the `LAYA_API_KEY` in `.env`, additional keys can be managed through
+`/admin/keys`.
+
+> **The `.env` key is the administrator key.** It always works, it is what you
+> use to create the first key, and it is the recovery path if every stored key is
+> revoked. It is never written to the key file.
+
+Every `/admin/*` route requires the **admin** scope, so an inference-only key
+cannot issue itself a replacement.
+
+### Storage
+
+Keys live in a JSON file (default `data/api_keys.json`, override with
+`API_KEYS_PATH`):
+
+- **Only `sha256` is stored, never the plaintext.** The plaintext appears once,
+  in the create response, and is unrecoverable afterwards.
+- The file is created `0600`.
+- Comparison is constant-time and **walks every record without short-circuiting**,
+  so response latency reveals neither whether a key exists nor which one matched.
+
+### `GET /admin/keys`
+
+```bash
+curl "http://127.0.0.1:9800/admin/keys?include_revoked=false" \
+  -H "Authorization: Bearer $LAYA_API_KEY"
+```
+
+```json
+{
+  "keys": [{
+    "id": "32e64954c0244a91bb51f642cfef16e4",
+    "name": "grafana-prod",
+    "prefix": "laya_sk_u825",
+    "scopes": ["inference"],
+    "created_at": "2026-09-24T03:42:48+00:00",
+    "expires_at": null,
+    "revoked_at": null,
+    "last_used_at": null
+  }],
+  "available_scopes": ["admin", "inference"],
+  "default_scopes": ["inference"]
+}
+```
+
+### `POST /admin/keys`
+
+```bash
+curl -X POST http://127.0.0.1:9800/admin/keys \
+  -H "Authorization: Bearer $LAYA_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "grafana-prod", "scopes": ["inference"]}'
+```
+
+```json
+{
+  "id": "32e64954c0244a91bb51f642cfef16e4",
+  "name": "grafana-prod",
+  "prefix": "laya_sk_u825",
+  "scopes": ["inference"],
+  "created_at": "2026-09-24T03:42:48+00:00",
+  "secret": "laya_sk_u825..."
+}
+```
+
+> ⚠️ **`secret` appears in this one response only.** Store it; it cannot be
+> retrieved again. Omitting `scopes` grants `inference` alone — issuing an
+> administrator requires writing `["admin", "inference"]` explicitly.
+
+### `GET /admin/keys/{key_id}`
+
+```bash
+curl http://127.0.0.1:9800/admin/keys/32e64954c0244a91bb51f642cfef16e4 \
+  -H "Authorization: Bearer $LAYA_API_KEY"
+```
+
+### `PATCH /admin/keys/{key_id}`
+
+Change the label, scopes, or expiry. **Fields you omit are left unchanged**:
+
+```bash
+curl -X PATCH http://127.0.0.1:9800/admin/keys/32e64954c0244a91bb51f642cfef16e4 \
+  -H "Authorization: Bearer $LAYA_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "grafana-staging"}'
+```
+
+### `DELETE /admin/keys/{key_id}`
+
+Revoke. Takes effect **immediately**; the record is kept for auditing:
+
+```bash
+curl -X DELETE http://127.0.0.1:9800/admin/keys/32e64954c0244a91bb51f642cfef16e4 \
+  -H "Authorization: Bearer $LAYA_API_KEY"
+```
 
 ---
 

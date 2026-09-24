@@ -79,6 +79,18 @@ class Settings(BaseSettings):
     request_timeout_s: float = Field(
         default=120.0, gt=0, description="Per-request inference budget in seconds"
     )
+    api_keys_path: str = Field(
+        default="data/api_keys.json",
+        description="Location of the API key file backing /admin/keys",
+    )
+    compat_enabled: bool = Field(
+        default=True,
+        description="Serve the OpenAI and Anthropic compatible endpoints",
+    )
+    compat_models: str = Field(
+        default="english",
+        description="Comma-separated model ids the compat endpoints advertise",
+    )
 
     @field_validator("cors_origins")
     @classmethod
@@ -130,6 +142,26 @@ class Settings(BaseSettings):
     def cors_enabled(self) -> bool:
         """Whether any CORS origins were configured."""
         return bool(self.cors_origin_list)
+
+    @property
+    def compat_model_list(self) -> list[str]:
+        """Return the model ids the compatibility endpoints advertise.
+
+        The OpenAI ``model`` parameter selects among these. Only the English
+        checkpoint is served by default: ``multilingual`` needs another 322 MB
+        of weights and roughly 1.5 GB of resident memory, and ``typed-decisions``
+        is fine-tuned on four specific question-id sets, so handing it an
+        arbitrary schema is out of distribution.
+
+        Returns:
+            The advertised model ids, de-duplicated and stripped.
+        """
+        seen: dict[str, None] = {}
+        for part in self.compat_models.split(","):
+            cleaned = part.strip()
+            if cleaned:
+                seen.setdefault(cleaned, None)
+        return list(seen) or ["english"]
 
     @property
     def is_loopback_only(self) -> bool:

@@ -197,6 +197,11 @@ class TestEndpointsDocumented:
             "/readyz",
             "/v1/predict",
             "/v1/robot-dog/localization-reliability",
+            "/v1/chat/completions",
+            "/v1/messages",
+            "/v1/models",
+            "/admin/keys",
+            "/admin/keys/{key_id}",
         }
         assert app_paths() == expected, (
             "routes changed; update the API docs and this expectation together"

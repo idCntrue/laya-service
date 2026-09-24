@@ -215,7 +215,16 @@ class StructuredLogger(_LoggerAdapter):
 
         merged: dict[str, Any] = dict(self.extra or {})
         merged.update(kwargs.get("extra") or {})
-        merged.update(structured)
+        # A structured field whose name collides with a LogRecord attribute
+        # cannot be placed in `extra` -- `logging` raises
+        # ``KeyError: Attempt to overwrite 'name' in LogRecord`` when the record
+        # is built, which turns a log call into a 500. Names like ``name``,
+        # ``module``, ``args`` and ``message`` are reserved, and ``name`` in
+        # particular is the obvious thing to call a field. Such keys are
+        # prefixed rather than dropped, so the value still reaches the sink
+        # under a predictable name.
+        for key, value in structured.items():
+            merged[f"x_{key}" if key in _RESERVED_ATTRS else key] = value
         rest["extra"] = merged
         return msg, rest
 

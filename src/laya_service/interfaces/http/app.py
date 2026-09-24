@@ -23,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from laya_service import __version__
 from laya_service.infrastructure.config.settings import Settings, get_settings
+from laya_service.infrastructure.security.api_key_store import JsonApiKeyStore
 from laya_service.interfaces.http.dependencies import get_decision_model, reset_model
 from laya_service.interfaces.http.exception_handlers import register_exception_handlers
 from laya_service.interfaces.http.middleware import (
@@ -30,7 +31,14 @@ from laya_service.interfaces.http.middleware import (
     AuthMiddleware,
     RequestIdMiddleware,
 )
-from laya_service.interfaces.http.routes import health, predict, robot_dog
+from laya_service.interfaces.http.routes import (
+    admin_keys,
+    anthropic_compat,
+    health,
+    openai_compat,
+    predict,
+    robot_dog,
+)
 from laya_service.logging_config import configure_logging, get_logger
 
 __all__ = ["create_app"]
@@ -138,19 +146,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             CORSMiddleware,
             allow_origins=resolved.cors_origin_list,
             allow_credentials=False,
-            allow_methods=["GET", "POST"],
-            allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+            allow_methods=["GET", "POST", "PATCH", "DELETE"],
+            # x-api-key and anthropic-version are what the Anthropic SDK sends;
+            # omitting them makes a browser-based client fail preflight, which
+            # is invisible until someone tries it. Server-side clients are
+            # unaffected either way.
+            allow_headers=[
+                "Authorization",
+                "Content-Type",
+                "X-Request-ID",
+                "x-api-key",
+                "anthropic-version",
+            ],
             expose_headers=["X-Request-ID", "X-Trace-ID"],
             max_age=600,
         )
 
-    app.add_middleware(AuthMiddleware, api_key=resolved.laya_api_key)
+    # The store is passed in so the middleware can resolve additional keys
+    # without knowing anything about where they live. Built from the *resolved*
+    # settings rather than the global singleton, so an app constructed with
+    # explicit settings actually honours them.
+    app.add_middleware(
+        AuthMiddleware,
+        api_key=resolved.laya_api_key,
+        store=JsonApiKeyStore(resolved.api_keys_path),
+    )
     app.add_middleware(AccessLogMiddleware)
     app.add_middleware(RequestIdMiddleware)
 
     app.include_router(health.router)
     app.include_router(predict.router)
     app.include_router(robot_dog.router)
+    app.include_router(admin_keys.router)
+    if resolved.compat_enabled:
+        app.include_router(openai_compat.router)
+        app.include_router(anthropic_compat.router)
 
     _logger.info(
         "application configured",

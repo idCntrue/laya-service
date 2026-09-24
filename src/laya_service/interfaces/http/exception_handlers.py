@@ -104,6 +104,57 @@ def build_error_response(
     return JSONResponse(status_code=status_code, content=body.model_dump())
 
 
+#: Path prefixes served in a foreign wire format. An error raised under one of
+#: these must be translated, because the SDK on the other end parses a different
+#: envelope -- an OpenAI client reading `{"ok": false, ...}` reports an opaque
+#: parse failure instead of the actual problem.
+_COMPAT_PREFIXES: Final[tuple[str, ...]] = ("/v1/chat/completions", "/v1/messages")
+
+
+def _compat_error_response(status_code: int, message: str, path: str) -> JSONResponse | None:
+    """Render an error in the wire format the request's path implies.
+
+    Args:
+        status_code: The HTTP status.
+        message: The human-readable message.
+        path: The request path, which selects the format.
+
+    Returns:
+        The translated response, or ``None`` when the path is not a compat route
+        and the service's own envelope applies.
+    """
+    if not any(path.startswith(prefix) for prefix in _COMPAT_PREFIXES):
+        return None
+
+    if path.startswith("/v1/messages"):
+        anthropic_type = {
+            400: "invalid_request_error",
+            401: "authentication_error",
+            403: "permission_error",
+            404: "not_found_error",
+            429: "rate_limit_error",
+            500: "api_error",
+            503: "overloaded_error",
+        }.get(status_code, "api_error")
+        return JSONResponse(
+            status_code=status_code,
+            content={"type": "error", "error": {"type": anthropic_type, "message": message}},
+        )
+
+    openai_type = "invalid_request_error" if status_code < 500 else "server_error"
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "error": {
+                "message": message,
+                "type": openai_type,
+                "code": None,
+                "param": None,
+            }
+        },
+    )
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Attach every exception handler to the application.
 
@@ -130,6 +181,9 @@ def register_exception_handlers(app: FastAPI) -> None:
             path=request.url.path,
             request_id=_request_id(request),
         )
+        compat = _compat_error_response(status_code, exc.message, request.url.path)
+        if compat is not None:
+            return compat
         return build_error_response(
             status_code=status_code,
             code=exc.code,
@@ -163,6 +217,9 @@ def register_exception_handlers(app: FastAPI) -> None:
             path=request.url.path,
             request_id=_request_id(request),
         )
+        compat = _compat_error_response(422, message, request.url.path)
+        if compat is not None:
+            return compat
         return build_error_response(
             status_code=422,
             code="validation_error",
@@ -219,6 +276,11 @@ def register_exception_handlers(app: FastAPI) -> None:
             error=str(exc),
             exc_info=True,
         )
+        compat = _compat_error_response(
+            500, "an internal error occurred; quote the request id when reporting", request.url.path
+        )
+        if compat is not None:
+            return compat
         return build_error_response(
             status_code=500,
             code="internal_error",

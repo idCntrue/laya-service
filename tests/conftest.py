@@ -13,7 +13,8 @@ whole HTTP stack is exercised without downloading anything.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -108,14 +109,41 @@ class FakeDecisionModel:
         if self.raise_on_predict is not None:
             raise self.raise_on_predict
         return {
-            question_id: {
-                "type": spec.get("type", "noul"),
-                "noul": round(self.probability_true, 4),
-                "confidence": round(self.confidence, 4),
-                "action": {"act_probability": 0.0},
-            }
-            for question_id, spec in questions.items()
+            question_id: self._answer_for(spec) for question_id, spec in questions.items()
         }
+
+    def _answer_for(self, spec: Mapping[str, Any]) -> dict[str, Any]:
+        """Build one answer entry in the shape Laya uses for that question type.
+
+        Laya emits a different key per type -- ``noul`` for a probability,
+        ``choice`` for the winning label, ``score`` for the expected value -- so
+        a fake that always emitted ``noul`` would let a ``choice`` or ``score``
+        consumer pass tests while being broken against the real adapter.
+
+        Args:
+            spec: The question specification.
+
+        Returns:
+            A Laya-shaped answer entry.
+        """
+        question_type = str(spec.get("type", "noul"))
+        base: dict[str, Any] = {
+            "type": question_type,
+            "confidence": round(self.confidence, 4),
+            "action": {"act_probability": 0.0},
+        }
+        if question_type == "choice":
+            # criteria is a mapping for choice; list() gives the label order.
+            keys = list(spec.get("criteria") or {})
+            base["choice"] = keys[0] if keys else ""
+            return base
+        if question_type == "score":
+            criteria = spec.get("criteria") or []
+            levels = len(criteria) if isinstance(criteria, Sequence) else 1
+            base["score"] = round(self.probability_true * max(levels - 1, 0), 4)
+            return base
+        base["noul"] = round(self.probability_true, 4)
+        return base
 
     @property
     def is_ready(self) -> bool:
@@ -145,12 +173,19 @@ def fake_model() -> FakeDecisionModel:
 
 
 @pytest.fixture
-def settings() -> Settings:
+def settings(tmp_path: Path) -> Settings:
     """Provide settings suitable for tests.
 
     The host is loopback so that the API-key requirement is not enforced by the
     settings validator, but a key is supplied anyway so the auth middleware is
     active and can be tested.
+
+    ``api_keys_path`` points into pytest's per-test temporary directory. Without
+    that, a test exercising ``/admin/keys`` would write to the real
+    ``data/api_keys.json`` and leak state between runs.
+
+    Args:
+        tmp_path: pytest's per-test temporary directory.
 
     Returns:
         A :class:`Settings` instance pinned to test values.
@@ -162,6 +197,7 @@ def settings() -> Settings:
         log_level="WARNING",
         max_body_bytes=65536,
         preload_model=False,
+        api_keys_path=str(tmp_path / "api_keys.json"),
         _env_file=None,  # type: ignore[call-arg]
     )
 

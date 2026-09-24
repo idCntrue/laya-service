@@ -18,22 +18,29 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from fastapi import Depends
+from fastapi import Depends, Request
 
 from laya_service.application.services.localization_prompt_builder import (
     LocalizationPromptBuilder,
 )
+from laya_service.application.use_cases.answer_tool_call import AnswerToolCallUseCase
 from laya_service.application.use_cases.evaluate_localization import (
     EvaluateLocalizationUseCase,
 )
+from laya_service.application.use_cases.manage_api_keys import ManageApiKeysUseCase
 from laya_service.application.use_cases.predict_decision import PredictDecisionUseCase
+from laya_service.domain.ports.api_key_store import ApiKeyStore
 from laya_service.domain.ports.decision_model import DecisionModel
 from laya_service.infrastructure.config.settings import Settings, get_settings
 from laya_service.infrastructure.model.laya_adapter import LayaDecisionModel
+from laya_service.infrastructure.security.api_key_store import JsonApiKeyStore
 
 __all__ = [
+    "get_answer_tool_call_use_case",
+    "get_api_key_store",
     "get_decision_model",
     "get_localization_use_case",
+    "get_manage_api_keys_use_case",
     "get_predict_use_case",
     "get_prompt_builder",
     "get_settings_dep",
@@ -72,12 +79,26 @@ def _prompt_builder_singleton() -> LocalizationPromptBuilder:
     return LocalizationPromptBuilder()
 
 
-def get_settings_dep() -> Settings:
-    """FastAPI dependency returning the settings singleton.
+def get_settings_dep(request: Request) -> Settings:
+    """FastAPI dependency returning the settings this application was built with.
+
+    The settings are read from ``app.state``, which ``create_app`` populates with
+    the instance it was given, rather than from the process-wide singleton. That
+    distinction is load-bearing: an application constructed with explicit
+    settings -- a test, or a deployment overriding a path -- must actually use
+    them. Calling ``get_settings()`` here would read the environment instead and
+    silently ignore the configuration, which is how a key store ends up writing
+    to one file and reading from another.
+
+    Args:
+        request: The incoming request, carrying the application.
 
     Returns:
-        The process-wide settings.
+        The resolved settings for this application.
     """
+    settings = getattr(request.app.state, "settings", None)
+    if isinstance(settings, Settings):
+        return settings
     return get_settings()
 
 
@@ -129,6 +150,60 @@ def get_localization_use_case(
         A use case bound to the resolved collaborators.
     """
     return EvaluateLocalizationUseCase(model=model, prompt_builder=prompt_builder)
+
+
+def get_api_key_store(
+    settings: Settings = Depends(get_settings_dep),
+) -> ApiKeyStore:
+    """FastAPI dependency returning the API key store port.
+
+    The path comes from the *injected* settings rather than the global
+    singleton, so an application built with explicit settings -- a test, or a
+    deployment that overrides the path -- actually uses them. Calling
+    ``get_settings()`` here instead would read the process environment and
+    silently ignore the configuration the app was created with, which is the
+    same class of bug as a factory that bypasses ``Depends``.
+
+    A fresh store per request is cheap: it holds a path and a lock, and reads
+    the file on each operation anyway, so a key created through ``/admin/keys``
+    takes effect immediately without a restart.
+
+    Args:
+        settings: The resolved settings, through the dependency graph.
+
+    Returns:
+        The store, typed as the port.
+    """
+    return JsonApiKeyStore(settings.api_keys_path)
+
+
+def get_answer_tool_call_use_case(
+    model: DecisionModel = Depends(get_decision_model),
+) -> AnswerToolCallUseCase:
+    """FastAPI dependency returning the compatibility tool-call use case.
+
+    Args:
+        model: The decision-model port, resolved through the dependency graph so
+            that an override of :func:`get_decision_model` reaches here.
+
+    Returns:
+        A use case bound to the resolved model.
+    """
+    return AnswerToolCallUseCase(model=model)
+
+
+def get_manage_api_keys_use_case(
+    store: ApiKeyStore = Depends(get_api_key_store),
+) -> ManageApiKeysUseCase:
+    """FastAPI dependency returning the API key administration use case.
+
+    Args:
+        store: The key store port, resolved through the dependency graph.
+
+    Returns:
+        A use case bound to the resolved store.
+    """
+    return ManageApiKeysUseCase(store=store)
 
 
 def reset_model() -> None:
