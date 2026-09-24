@@ -304,6 +304,10 @@ make smoke         # 对运行中的服务跑三条 curl
 | `GET /readyz` | 否 | 就绪探针，模型未加载时 503 |
 | `POST /v1/predict` | 是 | 通用推理，支持 `noul` / `choice` / `score` |
 | `POST /v1/robot-dog/localization-reliability` | 是 | 定位可信度判断 + 建议动作 |
+| `POST /v1/chat/completions` | 是 | OpenAI 兼容的工具调用 |
+| `POST /v1/messages` | 是 | Anthropic 兼容的工具调用 |
+| `GET /v1/models` | 是 | 可用的模型标识 |
+| `/admin/keys` | 管理员 | API Key 管理 |
 
 交互式文档：`http://<host>:9800/docs`
 

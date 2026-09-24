@@ -310,6 +310,17 @@ port. No weights, no network, no GPU.
 
 Base URL: `http://<host>:<port>`
 
+| Endpoint | Auth | Purpose |
+|---|---|---|
+| `GET /healthz` | — | Liveness probe |
+| `GET /readyz` | — | Readiness probe |
+| `POST /v1/predict` | yes | Generic inference |
+| `POST /v1/robot-dog/localization-reliability` | yes | Typed reliability verdict |
+| `POST /v1/chat/completions` | yes | OpenAI-compatible **tool calling** |
+| `POST /v1/messages` | yes | Anthropic-compatible **tool use** |
+| `GET /v1/models` | yes | Served model identifiers |
+| `/admin/keys` | **admin** | API key administration |
+
 ### Authentication
 
 Every `/v1/*` route requires:
@@ -318,7 +329,53 @@ Every `/v1/*` route requires:
 Authorization: Bearer <LAYA_API_KEY>
 ```
 
+The Anthropic-style `x-api-key` header is accepted too, so an unmodified
+Anthropic SDK authenticates without extra headers.
+
 `/healthz`, `/readyz`, `/docs`, `/redoc`, and `/openapi.json` are public.
+Everything under `/admin/` additionally requires a key with the `admin` scope.
+
+### Compatibility layer
+
+`POST /v1/chat/completions` and `POST /v1/messages` let an unmodified official
+SDK point its `base_url` here.
+
+**What they can do is tool calling, not chat.** The model behind this service
+classifies; it does not generate text. You describe the decisions you want with
+a tool's JSON Schema and receive them as the tool call's arguments. A request
+that expects prose is rejected with 400 rather than answered with something that
+looks like a reply — a faked generation is indistinguishable from a real one.
+
+```python
+from anthropic import Anthropic
+
+client = Anthropic(base_url="http://127.0.0.1:9800", api_key="laya_sk_...")
+
+message = client.messages.create(
+    model="english",
+    max_tokens=1024,                       # required by the SDK; ignored here
+    messages=[{"role": "user", "content": "Order #12345 arrived broken"}],
+    tools=[{
+        "name": "classify_ticket",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "enum": ["refund", "technical", "billing"],
+                    "description": "Which team should handle this?",
+                },
+            },
+        },
+    }],
+    tool_choice={"type": "tool", "name": "classify_ticket"},
+)
+
+print(message.content[0].input)   # {'category': 'refund'}
+```
+
+See [API.md](API.md#兼容层openai--anthropic) for the full mapping rules, the
+`x-laya-threshold` extension, and the fields that are ignored or rejected.
 
 ### Error envelope
 

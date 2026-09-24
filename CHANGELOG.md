@@ -18,9 +18,35 @@ Note that this project is pre-1.0: the API may change in a minor release, and
   cannot handle itself.
 - Documentation and packaging consistency tests that fail the build when the
   docs or `pyproject.toml` drift from the code.
+- **OpenAI- and Anthropic-compatible endpoints.** An unmodified official SDK can
+  point its `base_url` here and use **tool calling**: the caller describes the
+  decisions they want with a tool schema, and the answers arrive as the tool
+  call's arguments. `POST /v1/chat/completions`, `POST /v1/messages`, and
+  `GET /v1/models`.
+  Chat is **not** supported and is rejected with 400. The model classifies; it
+  does not generate, and a faked generation would be indistinguishable from a
+  real one. Verified against `anthropic` 1.7.0 and `openai` 3.17.0.
+- **API key administration** at `/admin/keys` (list, create, get, update,
+  revoke). Keys are stored as sha256 hashes in a JSON file; the plaintext is
+  returned once, at creation, and is unrecoverable afterwards. The `LAYA_API_KEY`
+  from the environment is the bootstrap administrator and is never written to the
+  file, so it remains the recovery path.
 
 ### Fixed
 
+- **`StructuredLogger` raised `KeyError` on reserved field names.**
+  `_logger.info("created", name=...)` — `name` collides with a `LogRecord`
+  attribute, and `logging` refuses to overwrite it, so a log call became a 500.
+  Reserved names are now prefixed (`x_name`) rather than colliding.
+- **The API key store read the wrong settings.** `get_api_key_store()` consulted
+  the process-wide settings singleton instead of the instance `create_app` was
+  given, so an application built with explicit settings wrote keys to one file
+  and read them from another. `get_settings_dep()` now reads
+  `app.state.settings`.
+- **`FakeDecisionModel` always emitted a `noul` answer.** It ignored the
+  question type, so a `choice` or `score` consumer could pass its tests while
+  being broken against the real adapter. It now emits the per-type shape Laya
+  uses.
 - **`pip install` failed with `InvalidConfigError`.** Switching to a PEP 639
   license expression (`license = "Apache-2.0"`) while leaving the matching
   `License :: OSI Approved :: Apache Software License` classifier in place makes
@@ -142,7 +168,7 @@ First working version.
 - **Quality gates**
   - `ruff` (E, F, I, N, UP, B, SIM, RUF) and `ruff format`.
   - `mypy --strict` across source and tests.
-  - 325 tests, 92% coverage, with a 70% floor enforced by `fail_under`.
+  - 485 tests, 90% coverage, with a 70% floor enforced by `fail_under`.
 - **Docs**
   - `README.md` — architecture, deployment, operations, limitations.
   - `API.md` — interface reference (Chinese).
