@@ -69,6 +69,32 @@ class InvalidQuestionError(DomainError):
     code = "invalid_question"
 
 
+class UnsupportedSchemaError(DomainError):
+    """Raised when a JSON Schema has no honest mapping onto model questions.
+
+    The compatibility endpoints let a caller describe what to decide with a
+    tool's ``input_schema``. This model classifies rather than generates, so
+    several schema shapes -- free-form strings, arrays, nested objects, and
+    booleans without an explicit threshold -- have no faithful mapping. Rejecting
+    them loudly is the point: a coerced answer would be indistinguishable from a
+    real language model's output.
+    """
+
+    code = "unsupported_schema"
+
+
+class UnsupportedModelError(DomainError):
+    """Raised when a caller requests a model identifier this service does not serve."""
+
+    code = "unsupported_model"
+
+
+class InvalidApiKeyError(DomainError):
+    """Raised when an API key request carries unusable or contradictory fields."""
+
+    code = "invalid_api_key"
+
+
 class ModelUnavailableError(DomainError):
     """Base class for failures originating in a decision-model adapter.
 

@@ -142,6 +142,9 @@ Responses carry `X-Request-ID` and `X-Trace-ID` headers.
 | `invalid_localization_summary` | 400 | Summary is internally incoherent | Fix the input |
 | `invalid_question` | 400 | Question definition is malformed | Check `type` / `instructions` / `criteria` |
 | `invalid_decision` | 400 | Decision carried unusable data | Fix the input |
+| `unsupported_schema` | 400 | A tool schema has no mapping to a question the model can answer | See the compatibility layer |
+| `unsupported_model` | 400 | A model was requested that this service does not serve | Query `GET /v1/models` |
+| `invalid_api_key` | 400 | An API-key request carried unusable fields | Check name / scopes / expires_at |
 | `model_load_failed` | 503 | Model could not be loaded (missing dep, download failure, no disk) | **Retryable** — check server logs |
 | `model_inference_failed` | 503 | Model raised during inference | **Retryable** |
 | `internal_error` | 500 | Unhandled exception | Report with the `request_id` |

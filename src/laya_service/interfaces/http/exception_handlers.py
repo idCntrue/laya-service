@@ -23,12 +23,15 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from laya_service.domain.exceptions import (
     DomainError,
+    InvalidApiKeyError,
     InvalidDecisionError,
     InvalidLocalizationSummaryError,
     InvalidProbabilityError,
     InvalidQuestionError,
     ModelInferenceError,
     ModelLoadError,
+    UnsupportedModelError,
+    UnsupportedSchemaError,
 )
 from laya_service.interfaces.http.schemas.responses import ErrorDetail, ErrorResponse
 from laya_service.logging_config import get_logger
@@ -48,6 +51,12 @@ STATUS_BY_CODE: Final[dict[type[Exception], int]] = {
     InvalidLocalizationSummaryError: 400,
     InvalidDecisionError: 400,
     InvalidQuestionError: 400,
+    # A schema the model cannot answer is the caller's mistake: they described
+    # something this model does not do. 400, not 422, because it is a semantic
+    # limitation rather than a malformed request body.
+    UnsupportedSchemaError: 400,
+    UnsupportedModelError: 400,
+    InvalidApiKeyError: 400,
     # A model that cannot load or cannot run is a *dependency* failure, not a
     # client error: 503 tells the caller to retry, and tells an orchestrator
     # that this replica should be taken out of rotation.

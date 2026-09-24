@@ -152,6 +152,9 @@ Authorization: Bearer <LAYA_API_KEY>
 | `invalid_localization_summary` | 400 | 定位摘要内部不自洽 | 检查输入 |
 | `invalid_question` | 400 | 问题定义不合法 | 检查 `type` / `instructions` / `criteria` |
 | `invalid_decision` | 400 | 决策数据不可用 | 检查输入 |
+| `unsupported_schema` | 400 | 工具 schema 无法映射到模型能回答的问题 | 见[兼容层](#兼容层openai--anthropic) |
+| `unsupported_model` | 400 | 请求了本服务不提供的模型 | 用 `GET /v1/models` 查可用值 |
+| `invalid_api_key` | 400 | API Key 请求字段不合法 | 检查 name / scopes / expires_at |
 | `model_load_failed` | 503 | 模型加载失败（缺依赖/下载失败/无磁盘） | **可重试**；查服务端日志 |
 | `model_inference_failed` | 503 | 推理过程抛错 | **可重试** |
 | `internal_error` | 500 | 未捕获异常 | 提供 `request_id` 报障 |
