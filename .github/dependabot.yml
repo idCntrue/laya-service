@@ -76,3 +76,15 @@ updates:
       - docker
     commit-message:
       prefix: "chore(docker)"
+    ignore:
+      # The base image version is bounded by PyTorch, not by preference.
+      #
+      # torch==2.9.1+cpu publishes wheels for cp310 through cp313 only -- there
+      # is no cp314 build. Bumping the image past 3.13 makes `pip install
+      # torch==2.9.1+cpu` fail during the Docker build.
+      #
+      # Ignore every major above 3.13 rather than pinning one version, so the
+      # rule survives intermediate releases. Revisit when torch ships a cp314
+      # wheel.
+      - dependency-name: "python"
+        versions: [">=3.14"]
